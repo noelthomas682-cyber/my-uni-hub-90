@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import ICSImport from '@/components/ICSImport';
 import { useToast } from '@/hooks/use-toast';
 import { LMS_CONFIG, type LMSProvider } from '@/lib/types';
 import { Link2, Unlink, RefreshCw, Plus, ExternalLink, CheckCircle2, Clock } from 'lucide-react';
