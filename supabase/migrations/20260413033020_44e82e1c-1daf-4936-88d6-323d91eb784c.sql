@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX IF NOT EXISTS idx_courses_user_external ON public.courses(user_id, external_id) WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_user_external ON public.calendar_events(user_id, external_id) WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_user_external ON public.assignments(user_id, external_id) WHERE external_id IS NOT NULL;
