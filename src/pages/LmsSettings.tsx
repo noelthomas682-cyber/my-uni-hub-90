@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import ICSImport from '@/components/ICSImport';
 import { useToast } from '@/hooks/use-toast';
 import { LMS_CONFIG, type LMSProvider } from '@/lib/types';
 import { Link2, Unlink, RefreshCw, Plus, ExternalLink, CheckCircle2, Clock } from 'lucide-react';
@@ -119,11 +120,14 @@ export default function LmsSettings() {
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+      {/* ICS Import — primary method */}
+      <ICSImport />
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">LMS Connections</h1>
+          <h1 className="text-2xl font-bold text-foreground">LMS Connections (OAuth)</h1>
           <p className="text-muted-foreground text-sm">
-            Connect your university's LMS to automatically import your schedule, assignments, and exams.
+            If your university IT has registered Rute, you can also connect directly via OAuth.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
