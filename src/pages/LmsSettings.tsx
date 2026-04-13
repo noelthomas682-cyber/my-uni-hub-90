@@ -119,11 +119,14 @@ export default function LmsSettings() {
 
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6">
+      {/* ICS Import — primary method */}
+      <ICSImport />
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">LMS Connections</h1>
+          <h1 className="text-2xl font-bold text-foreground">LMS Connections (OAuth)</h1>
           <p className="text-muted-foreground text-sm">
-            Connect your university's LMS to automatically import your schedule, assignments, and exams.
+            If your university IT has registered Rute, you can also connect directly via OAuth.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
