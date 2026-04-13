@@ -14,7 +14,244 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assignments: {
+        Row: {
+          assignment_type: string | null
+          completed_at: string | null
+          connection_id: string | null
+          course_code: string | null
+          course_name: string | null
+          created_at: string
+          description: string | null
+          due_date: string
+          external_id: string | null
+          id: string
+          is_complete: boolean | null
+          points_possible: number | null
+          priority: string | null
+          source: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          assignment_type?: string | null
+          completed_at?: string | null
+          connection_id?: string | null
+          course_code?: string | null
+          course_name?: string | null
+          created_at?: string
+          description?: string | null
+          due_date: string
+          external_id?: string | null
+          id?: string
+          is_complete?: boolean | null
+          points_possible?: number | null
+          priority?: string | null
+          source?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          assignment_type?: string | null
+          completed_at?: string | null
+          connection_id?: string | null
+          course_code?: string | null
+          course_name?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string
+          external_id?: string | null
+          id?: string
+          is_complete?: boolean | null
+          points_possible?: number | null
+          priority?: string | null
+          source?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignments_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "lms_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_events: {
+        Row: {
+          course_code: string | null
+          course_name: string | null
+          created_at: string
+          end_time: string
+          event_type: string | null
+          external_id: string | null
+          id: string
+          is_recurring: boolean | null
+          location: string | null
+          source: string | null
+          start_time: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          course_code?: string | null
+          course_name?: string | null
+          created_at?: string
+          end_time: string
+          event_type?: string | null
+          external_id?: string | null
+          id?: string
+          is_recurring?: boolean | null
+          location?: string | null
+          source?: string | null
+          start_time: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          course_code?: string | null
+          course_name?: string | null
+          created_at?: string
+          end_time?: string
+          event_type?: string | null
+          external_id?: string | null
+          id?: string
+          is_recurring?: boolean | null
+          location?: string | null
+          source?: string | null
+          start_time?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      courses: {
+        Row: {
+          connection_id: string | null
+          course_code: string
+          course_name: string
+          created_at: string
+          external_id: string | null
+          id: string
+          instructor: string | null
+          source: string
+          user_id: string
+        }
+        Insert: {
+          connection_id?: string | null
+          course_code: string
+          course_name: string
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          instructor?: string | null
+          source: string
+          user_id: string
+        }
+        Update: {
+          connection_id?: string | null
+          course_code?: string
+          course_name?: string
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          instructor?: string | null
+          source?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "courses_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "lms_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lms_connections: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          id: string
+          instance_url: string
+          is_active: boolean | null
+          last_synced_at: string | null
+          provider: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          university_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: string
+          instance_url: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          provider: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          university_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: string
+          instance_url?: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          university_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          university: string | null
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          university?: string | null
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          university?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
