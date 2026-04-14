@@ -27,10 +27,13 @@ export type Database = {
           external_id: string | null
           id: string
           is_complete: boolean | null
+          metadata: Json | null
           points_possible: number | null
           priority: string | null
           source: string | null
+          submission_url: string | null
           title: string
+          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -45,10 +48,13 @@ export type Database = {
           external_id?: string | null
           id?: string
           is_complete?: boolean | null
+          metadata?: Json | null
           points_possible?: number | null
           priority?: string | null
           source?: string | null
+          submission_url?: string | null
           title: string
+          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -63,10 +69,13 @@ export type Database = {
           external_id?: string | null
           id?: string
           is_complete?: boolean | null
+          metadata?: Json | null
           points_possible?: number | null
           priority?: string | null
           source?: string | null
+          submission_url?: string | null
           title?: string
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -81,6 +90,7 @@ export type Database = {
       }
       calendar_events: {
         Row: {
+          colour: string | null
           course_code: string | null
           course_name: string | null
           created_at: string
@@ -88,14 +98,18 @@ export type Database = {
           event_type: string | null
           external_id: string | null
           id: string
+          is_blocked: boolean | null
           is_recurring: boolean | null
           location: string | null
+          metadata: Json | null
           source: string | null
           start_time: string
           title: string
+          updated_at: string | null
           user_id: string
         }
         Insert: {
+          colour?: string | null
           course_code?: string | null
           course_name?: string | null
           created_at?: string
@@ -103,14 +117,18 @@ export type Database = {
           event_type?: string | null
           external_id?: string | null
           id?: string
+          is_blocked?: boolean | null
           is_recurring?: boolean | null
           location?: string | null
+          metadata?: Json | null
           source?: string | null
           start_time: string
           title: string
+          updated_at?: string | null
           user_id: string
         }
         Update: {
+          colour?: string | null
           course_code?: string | null
           course_name?: string | null
           created_at?: string
@@ -118,11 +136,14 @@ export type Database = {
           event_type?: string | null
           external_id?: string | null
           id?: string
+          is_blocked?: boolean | null
           is_recurring?: boolean | null
           location?: string | null
+          metadata?: Json | null
           source?: string | null
           start_time?: string
           title?: string
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
@@ -174,15 +195,27 @@ export type Database = {
       lms_connections: {
         Row: {
           access_token: string | null
+          auth_method: string | null
+          base_url: string | null
           client_id: string | null
           client_secret: string | null
+          courses_count: number | null
           created_at: string
+          detected_at: string | null
+          email_domain: string | null
+          events_count: number | null
           id: string
           instance_url: string
           is_active: boolean | null
+          is_connected: boolean | null
           last_synced_at: string | null
+          lms_name: string | null
+          lms_type: string | null
+          metadata: Json | null
           provider: string
           refresh_token: string | null
+          sync_error: string | null
+          tasks_count: number | null
           token_expires_at: string | null
           university_name: string
           updated_at: string
@@ -190,15 +223,27 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          auth_method?: string | null
+          base_url?: string | null
           client_id?: string | null
           client_secret?: string | null
+          courses_count?: number | null
           created_at?: string
+          detected_at?: string | null
+          email_domain?: string | null
+          events_count?: number | null
           id?: string
           instance_url: string
           is_active?: boolean | null
+          is_connected?: boolean | null
           last_synced_at?: string | null
+          lms_name?: string | null
+          lms_type?: string | null
+          metadata?: Json | null
           provider: string
           refresh_token?: string | null
+          sync_error?: string | null
+          tasks_count?: number | null
           token_expires_at?: string | null
           university_name: string
           updated_at?: string
@@ -206,15 +251,27 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          auth_method?: string | null
+          base_url?: string | null
           client_id?: string | null
           client_secret?: string | null
+          courses_count?: number | null
           created_at?: string
+          detected_at?: string | null
+          email_domain?: string | null
+          events_count?: number | null
           id?: string
           instance_url?: string
           is_active?: boolean | null
+          is_connected?: boolean | null
           last_synced_at?: string | null
+          lms_name?: string | null
+          lms_type?: string | null
+          metadata?: Json | null
           provider?: string
           refresh_token?: string | null
+          sync_error?: string | null
+          tasks_count?: number | null
           token_expires_at?: string | null
           university_name?: string
           updated_at?: string
