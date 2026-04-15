@@ -32,21 +32,40 @@ export default function ICSImport() {
       let eventsInserted = 0;
       let assignmentsInserted = 0;
 
-      // Insert events in batches
+      // Split items with and without external_id
       if (parsed.events.length > 0) {
-        const { error } = await supabase
-          .from('calendar_events')
-          .upsert(parsed.events as any[], { onConflict: 'user_id,external_id' });
-        if (error) throw error;
+        const withId = parsed.events.filter(e => e.external_id);
+        const withoutId = parsed.events.filter(e => !e.external_id);
+        if (withId.length > 0) {
+          const { error } = await supabase
+            .from('calendar_events')
+            .upsert(withId as any[], { onConflict: 'user_id,external_id' });
+          if (error) throw error;
+        }
+        if (withoutId.length > 0) {
+          const { error } = await supabase
+            .from('calendar_events')
+            .insert(withoutId as any[]);
+          if (error) throw error;
+        }
         eventsInserted = parsed.events.length;
       }
 
-      // Insert assignments in batches
       if (parsed.assignments.length > 0) {
-        const { error } = await supabase
-          .from('assignments')
-          .upsert(parsed.assignments as any[], { onConflict: 'user_id,external_id' });
-        if (error) throw error;
+        const withId = parsed.assignments.filter(a => a.external_id);
+        const withoutId = parsed.assignments.filter(a => !a.external_id);
+        if (withId.length > 0) {
+          const { error } = await supabase
+            .from('assignments')
+            .upsert(withId as any[], { onConflict: 'user_id,external_id' });
+          if (error) throw error;
+        }
+        if (withoutId.length > 0) {
+          const { error } = await supabase
+            .from('assignments')
+            .insert(withoutId as any[]);
+          if (error) throw error;
+        }
         assignmentsInserted = parsed.assignments.length;
       }
 
