@@ -126,22 +126,29 @@ export default function LmsSettings() {
       )}
 
       {/* Import methods */}
-      <Tabs defaultValue="lms">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs defaultValue="calendar-url">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="calendar-url" className="flex items-center gap-2">
+            <Link2 className="w-4 h-4" /> Calendar URL
+          </TabsTrigger>
+          <TabsTrigger value="ics" className="flex items-center gap-2">
+            <Upload className="w-4 h-4" /> ICS File
+          </TabsTrigger>
           <TabsTrigger value="lms" className="flex items-center gap-2">
             <Wifi className="w-4 h-4" /> LMS Connect
           </TabsTrigger>
-          <TabsTrigger value="ics" className="flex items-center gap-2">
-            <Upload className="w-4 h-4" /> ICS File Import
-          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="lms" className="mt-4">
-          <LmsConnect />
+        <TabsContent value="calendar-url" className="mt-4">
+          <CalendarUrlImport />
         </TabsContent>
 
         <TabsContent value="ics" className="mt-4">
           <ICSImport />
+        </TabsContent>
+
+        <TabsContent value="lms" className="mt-4">
+          <LmsConnect />
         </TabsContent>
       </Tabs>
 
