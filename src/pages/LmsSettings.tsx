@@ -8,7 +8,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import LmsConnect from '@/components/LmsConnect';
 import ICSImport from '@/components/ICSImport';
-import { Wifi, Upload, CheckCircle2, Clock, RefreshCw, WifiOff, ExternalLink } from 'lucide-react';
+import CalendarUrlImport from '@/components/CalendarUrlImport';
+import { Wifi, Upload, Link2, CheckCircle2, Clock, RefreshCw, WifiOff, ExternalLink } from 'lucide-react';
 
 interface LmsConnection {
   id: string;
