@@ -14,7 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Instrument Sans", "system-ui", "sans-serif"],
+        heading: ["Cabinet Grotesk", "Instrument Sans", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -57,12 +58,6 @@ export default {
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
-        },
-        lms: {
-          canvas: "hsl(var(--lms-canvas))",
-          moodle: "hsl(var(--lms-moodle))",
-          d2l: "hsl(var(--lms-d2l))",
-          blackboard: "hsl(var(--lms-blackboard))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
