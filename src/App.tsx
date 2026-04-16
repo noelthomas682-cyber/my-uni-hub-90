@@ -5,11 +5,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Schedule from "./pages/Schedule";
-import Assignments from "./pages/Assignments";
-import LmsSettings from "./pages/LmsSettings";
 import DashboardLayout from "./components/DashboardLayout";
+import HomePage from "./pages/HomePage";
+import PlanPage from "./pages/PlanPage";
+import SocialPage from "./pages/SocialPage";
+import BulletinPage from "./pages/BulletinPage";
+import MePage from "./pages/MePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,13 +23,14 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/home" replace />} />
             <Route path="/auth" element={<Auth />} />
             <Route element={<DashboardLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/schedule" element={<Schedule />} />
-              <Route path="/assignments" element={<Assignments />} />
-              <Route path="/lms-settings" element={<LmsSettings />} />
+              <Route path="/home" element={<HomePage />} />
+              <Route path="/plan" element={<PlanPage />} />
+              <Route path="/social" element={<SocialPage />} />
+              <Route path="/bulletin" element={<BulletinPage />} />
+              <Route path="/me" element={<MePage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

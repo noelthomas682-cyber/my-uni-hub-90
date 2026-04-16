@@ -1,7 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import AppSidebar from './AppSidebar';
-import MobileNav from './MobileNav';
+import BottomNav from './BottomNav';
 
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
@@ -17,12 +16,13 @@ export default function DashboardLayout() {
   if (!user) return <Navigate to="/auth" replace />;
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <AppSidebar />
-      <main className="flex-1 overflow-auto pb-20 md:pb-0">
-        <Outlet />
-      </main>
-      <MobileNav />
+    <div className="bg-background min-h-screen">
+      <div className="app-container">
+        <main className="pb-24 min-h-screen">
+          <Outlet />
+        </main>
+        <BottomNav />
+      </div>
     </div>
   );
 }
