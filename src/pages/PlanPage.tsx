@@ -1,19 +1,36 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Calendar, CheckSquare, Target } from 'lucide-react';
+import { Calendar, CheckSquare, Target, Plus, TrendingUp, Trophy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
 
 type SubTab = 'schedule' | 'tasks' | 'goals';
+
+interface Goal {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string | null;
+  target_value: number;
+  current_value: number;
+  unit: string | null;
+  due_date: string | null;
+  is_complete: boolean | null;
+  colour: string | null;
+}
 
 export default function PlanPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SubTab>('schedule');
   const [events, setEvents] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [newGoalTitle, setNewGoalTitle] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -37,14 +54,43 @@ export default function PlanPage() {
         .then(({ data }) => { setTasks(data || []); setLoading(false); });
     } else {
       supabase
-        .from('assignments')
+        .from('goals')
         .select('*')
-        .eq('is_complete', false)
-        .order('due_date')
+        .order('is_complete', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(20)
-        .then(({ data }) => { setAssignments(data || []); setLoading(false); });
+        .then(({ data }) => { setGoals((data as Goal[]) || []); setLoading(false); });
     }
   }, [user, activeTab]);
+
+  const addGoal = async () => {
+    if (!newGoalTitle.trim() || !user) return;
+    const { data, error } = await supabase.from('goals').insert({
+      user_id: user.id,
+      title: newGoalTitle.trim(),
+      target_value: 100,
+      current_value: 0,
+      unit: '%',
+      category: 'academic',
+    }).select().single();
+    if (error) { toast.error('Could not create goal'); return; }
+    setGoals(prev => [data as Goal, ...prev]);
+    setNewGoalTitle('');
+    setShowAddGoal(false);
+    toast.success('Goal added');
+  };
+
+  const updateGoalProgress = async (goal: Goal, delta: number) => {
+    const next = Math.max(0, Math.min(goal.target_value, goal.current_value + delta));
+    const isComplete = next >= goal.target_value;
+    await supabase.from('goals').update({
+      current_value: next,
+      is_complete: isComplete,
+      completed_at: isComplete ? new Date().toISOString() : null,
+    }).eq('id', goal.id);
+    setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, current_value: next, is_complete: isComplete } : g));
+    if (isComplete) toast.success(`🎉 Goal completed: ${goal.title}`);
+  };
 
   const tabs: { key: SubTab; label: string; icon: typeof Calendar }[] = [
     { key: 'schedule', label: 'Schedule', icon: Calendar },
@@ -139,25 +185,104 @@ export default function PlanPage() {
           )}
 
           {activeTab === 'goals' && (
-            <div className="space-y-2">
-              {assignments.length === 0 ? (
-                <p className="text-muted-foreground text-sm text-center py-10">No assignments due</p>
-              ) : assignments.map(a => (
-                <div key={a.id} className="glass-card rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium text-sm truncate">{a.title}</p>
-                    {a.course_code && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0 ml-2">
-                        {a.course_code}
-                      </span>
-                    )}
+            <div className="space-y-3">
+              {/* Add goal */}
+              {showAddGoal ? (
+                <div className="glass-card rounded-2xl p-4 space-y-3">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newGoalTitle}
+                    onChange={(e) => setNewGoalTitle(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addGoal()}
+                    placeholder="e.g. Read 5 chapters this week"
+                    className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={addGoal}
+                      className="flex-1 bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold hover:bg-primary/90 transition-colors"
+                    >
+                      Add goal
+                    </button>
+                    <button
+                      onClick={() => { setShowAddGoal(false); setNewGoalTitle(''); }}
+                      className="px-4 bg-secondary text-muted-foreground rounded-xl py-2 text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Due {format(new Date(a.due_date), 'MMM d · h:mm a')}
-                    {a.points_possible && ` · ${a.points_possible} pts`}
-                  </p>
                 </div>
-              ))}
+              ) : (
+                <button
+                  onClick={() => setShowAddGoal(true)}
+                  className="w-full glass-card rounded-2xl p-4 flex items-center justify-center gap-2 text-sm font-semibold text-primary border-dashed border-primary/30 hover:bg-primary/5 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  New goal
+                </button>
+              )}
+
+              {goals.length === 0 ? (
+                <div className="glass-card rounded-2xl p-8 text-center">
+                  <Trophy className="w-6 h-6 text-primary mx-auto mb-2" />
+                  <p className="font-heading font-bold text-base mb-1">Set your first goal</p>
+                  <p className="text-muted-foreground text-xs">Track progress and stay accountable.</p>
+                </div>
+              ) : goals.map(goal => {
+                const pct = Math.round((goal.current_value / goal.target_value) * 100);
+                return (
+                  <div key={goal.id} className="glass-card rounded-2xl p-4">
+                    <div className="flex items-start justify-between mb-2 gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "font-semibold text-sm",
+                          goal.is_complete && "line-through text-muted-foreground"
+                        )}>
+                          {goal.title}
+                        </p>
+                        {goal.due_date && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Due {format(new Date(goal.due_date), 'MMM d')}
+                          </p>
+                        )}
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
+                        goal.is_complete
+                          ? "bg-primary/20 text-primary"
+                          : "bg-secondary text-muted-foreground"
+                      )}>
+                        {goal.category || 'general'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-2">
+                      <Progress value={pct} className="h-2 flex-1" />
+                      <span className="font-heading text-sm font-bold text-primary tabular-nums min-w-[44px] text-right">
+                        {pct}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3" />
+                        {goal.current_value} / {goal.target_value} {goal.unit}
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => updateGoalProgress(goal, -10)}
+                          className="w-7 h-7 rounded-lg bg-secondary text-muted-foreground text-sm font-bold hover:bg-secondary/80"
+                        >−</button>
+                        <button
+                          onClick={() => updateGoalProgress(goal, 10)}
+                          className="w-7 h-7 rounded-lg bg-primary/20 text-primary text-sm font-bold hover:bg-primary/30"
+                        >+</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>
