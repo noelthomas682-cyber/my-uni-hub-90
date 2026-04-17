@@ -289,6 +289,57 @@ export type Database = {
           },
         ]
       }
+      goals: {
+        Row: {
+          category: string | null
+          colour: string | null
+          completed_at: string | null
+          created_at: string
+          current_value: number | null
+          description: string | null
+          due_date: string | null
+          id: string
+          is_complete: boolean | null
+          target_value: number | null
+          title: string
+          unit: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          colour?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_value?: number | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_complete?: boolean | null
+          target_value?: number | null
+          title: string
+          unit?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          colour?: string | null
+          completed_at?: string | null
+          created_at?: string
+          current_value?: number | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_complete?: boolean | null
+          target_value?: number | null
+          title?: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lms_connections: {
         Row: {
           access_token: string | null
