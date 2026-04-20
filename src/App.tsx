@@ -12,6 +12,9 @@ import SocialPage from "./pages/SocialPage";
 import BulletinPage from "./pages/BulletinPage";
 import MePage from "./pages/MePage";
 import NotFound from "./pages/NotFound";
+import Onboarding from "./pages/Onboarding";
+import LmsSettings from "./pages/LmsSettings";
+import ChatPage from "./pages/ChatPage";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +27,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/auth" element={<Auth />} />
             <Route element={<DashboardLayout />}>
               <Route path="/home" element={<HomePage />} />
@@ -31,6 +35,8 @@ const App = () => (
               <Route path="/social" element={<SocialPage />} />
               <Route path="/bulletin" element={<BulletinPage />} />
               <Route path="/me" element={<MePage />} />
+              <Route path="/lms-settings" element={<LmsSettings />} />
+              <Route path="/chat" element={<ChatPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

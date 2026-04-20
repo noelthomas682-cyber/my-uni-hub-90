@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { format } from 'date-fns';
-import { Flame, Clock, Bell, MessageCircle, Moon, Sparkles, MapPin } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { format, isToday } from 'date-fns';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { Moon, Plus, Bell, MessageCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface CalendarEvent {
   id: string;
@@ -17,210 +18,344 @@ interface CalendarEvent {
   colour: string | null;
 }
 
-const ACCENT_COLOURS = [
-  'hsl(80 89% 65%)',   // lime
-  'hsl(280 70% 70%)',  // purple
-  'hsl(20 90% 65%)',   // orange
-  'hsl(190 80% 60%)',  // cyan
-  'hsl(340 80% 65%)',  // pink
-];
+interface Task {
+  id: string;
+  title: string;
+  due_date: string | null;
+  completed: boolean;
+  priority: string | null;
+  category: string | null;
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+const EVENT_TYPE_COLOURS: Record<string, string> = {
+  lecture: '#a78bfa',
+  seminar: '#f59e0b',
+  sport: '#34d399',
+  society: '#fb923c',
+  study: '#a3e635',
+  default: '#60a5fa',
+};
+
+function getEventColour(type: string | null) {
+  if (!type) return EVENT_TYPE_COLOURS.default;
+  return EVENT_TYPE_COLOURS[type.toLowerCase()] || EVENT_TYPE_COLOURS.default;
+}
+
+function getEventTypeLabel(type: string | null) {
+  if (!type) return null;
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
 
 export default function HomePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
+  const [profile, setProfile] = useState<any>(null);
+  const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [nightMode, setNightMode] = useState(false);
   const today = new Date();
 
   useEffect(() => {
     if (!user) return;
+
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
+    const in14Days = new Date(today);
+    in14Days.setDate(today.getDate() + 14);
 
-    supabase
-      .from('calendar_events')
-      .select('*')
+    supabase.from('profiles')
+      .select('full_name, university, streak_count')
+      .eq('id', user.id).single()
+      .then(({ data }) => { if (data) setProfile(data); });
+
+    supabase.from('calendar_events').select('*')
+      .eq('user_id', user.id)
       .gte('start_time', startOfDay.toISOString())
       .lte('start_time', endOfDay.toISOString())
       .order('start_time')
-      .then(({ data }) => {
-        setEvents(data || []);
-        setLoading(false);
+      .then(({ data }) => { setEvents(data || []); setLoading(false); });
+
+    supabase.from('tasks').select('*')
+      .eq('user_id', user.id)
+      .eq('completed', false)
+      .not('due_date', 'is', null)
+      .gte('due_date', startOfDay.toISOString())
+      .lte('due_date', in14Days.toISOString())
+      .order('due_date').limit(5)
+      .then(({ data }) => { setUpcomingTasks(data || []); });
+
+    supabase.from('team_members')
+      .select('team_id, role')
+      .eq('user_id', user.id)
+      .then(async ({ data: memberships }) => {
+        if (!memberships || memberships.length === 0) return;
+        const teamIds = memberships.map((m: any) => m.team_id);
+        const { data: teamsData } = await supabase
+          .from('teams').select('*').in('id', teamIds);
+        const merged = (teamsData || []).map((t: any) => {
+          const m = memberships.find((mm: any) => mm.team_id === t.id);
+          return { ...t, myRole: m?.role || 'member' };
+        });
+        setTeams(merged);
       });
   }, [user]);
 
+  const firstName = profile?.full_name?.split(' ')[0] || '';
+  const streak = profile?.streak_count || 0;
+
   const totalClassMinutes = events.reduce((acc, e) => {
-    const diff = new Date(e.end_time).getTime() - new Date(e.start_time).getTime();
-    return acc + diff / 60000;
+    if (!e.end_time) return acc;
+    return acc + (new Date(e.end_time).getTime() - new Date(e.start_time).getTime()) / 60000;
   }, 0);
   const freeMinutes = Math.max(0, 16 * 60 - totalClassMinutes);
   const freeHours = Math.floor(freeMinutes / 60);
   const freeMin = Math.round(freeMinutes % 60);
+  const todayDeadlines = upcomingTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
+  const overdueCount = 0;
+  const tasksDone = 0;
 
   return (
-    <div className="px-5 pt-12 pb-4 animate-fade-in">
-      {/* Top header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <p className="text-muted-foreground text-xs uppercase tracking-wider">{format(today, 'EEEE')}</p>
-          <h1 className="font-heading text-3xl font-bold leading-tight">
-            {format(today, 'MMM d')}
-            <span className="text-primary">.</span>
-          </h1>
+    <div className="pb-28 animate-fade-in bg-background min-h-screen">
+
+      {/* ── Top Bar ── */}
+      <div className="flex items-center justify-between px-4 pt-12 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="font-heading text-xl font-black text-primary tracking-tight">rute</span>
+          <button
+            onClick={() => navigate('/chat')}
+            className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+            <MessageCircle className="w-4 h-4 text-muted-foreground" />
+          </button>
+          <span className="text-base font-semibold text-foreground">Home</span>
         </div>
         <div className="flex items-center gap-2">
           <button
-            aria-label="Messages"
-            className="w-10 h-10 rounded-full bg-secondary/70 border border-border/40 flex items-center justify-center hover:bg-secondary transition-colors relative"
-          >
-            <MessageCircle className="w-[18px] h-[18px] text-foreground" />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />
+            onClick={() => navigate('/plan')}
+            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center">
+            <Plus className="w-4 h-4 text-foreground" />
           </button>
           <button
-            aria-label="Notifications"
-            className="w-10 h-10 rounded-full bg-secondary/70 border border-border/40 flex items-center justify-center hover:bg-secondary transition-colors relative"
-          >
-            <Bell className="w-[18px] h-[18px] text-foreground" />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full" />
+            onClick={() => toast('No new notifications')}
+            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
+            <Bell className="w-4 h-4 text-foreground" />
+            {upcomingTasks.length > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full" />
+            )}
           </button>
         </div>
       </div>
 
-      {/* Hero card */}
-      <div className="relative rounded-3xl p-6 mb-4 overflow-hidden gradient-primary">
-        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-black/10 blur-2xl" />
-        <div className="relative">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-1.5 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-full">
-              <Flame className="w-3.5 h-3.5 text-primary-foreground" />
-              <span className="text-primary-foreground text-xs font-bold">1 day streak</span>
-            </div>
-            <Sparkles className="w-5 h-5 text-primary-foreground/80" />
+      <div className="px-4 space-y-3">
+
+        {/* ── Tonight I'm Going Out ── */}
+        <button
+          onClick={() => setNightMode(!nightMode)}
+          className={cn(
+            'relative w-full rounded-2xl p-4 overflow-hidden transition-all border text-left',
+            nightMode ? 'border-primary/30' : 'border-white/5'
+          )}
+          style={{ background: 'linear-gradient(135deg, hsl(260 50% 10%) 0%, hsl(240 60% 7%) 50%, hsl(280 40% 12%) 100%)' }}
+        >
+          <div className="absolute inset-0 opacity-50">
+            {[[20,15],[60,30],[80,10],[35,60],[90,50],[15,75]].map(([l,t], i) => (
+              <div key={i} className="absolute w-0.5 h-0.5 bg-white rounded-full"
+                style={{ left: `${l}%`, top: `${t}%` }} />
+            ))}
           </div>
-          <p className="text-primary-foreground/70 text-xs uppercase tracking-wider mb-1">Today</p>
-          <h2 className="font-heading text-3xl font-bold text-primary-foreground leading-tight mb-4">
-            {events.length > 0 ? `${events.length} event${events.length > 1 ? 's' : ''} planned` : 'Your day, your pace.'}
-          </h2>
-          <div className="flex items-center gap-2 bg-black/20 backdrop-blur-md rounded-2xl px-4 py-3 w-fit">
-            <Clock className="w-4 h-4 text-primary-foreground" />
+          <div className="relative flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Moon className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-white text-sm leading-tight">
+                {nightMode ? 'Night mode on' : "Tonight I'm Going Out"}
+              </p>
+              <p className="text-[11px] text-white/50 mt-0.5">
+                {nightMode ? "We'll keep tomorrow light" : 'Suggestions cleared · Study rescheduled · Night yours'}
+              </p>
+            </div>
+            {nightMode ? (
+              <span className="text-xs text-primary font-semibold shrink-0">Active</span>
+            ) : (
+              <span className="text-xs text-white/40 font-medium shrink-0 border border-white/10 px-2 py-1 rounded-full">
+                Tap when going out
+              </span>
+            )}
+          </div>
+        </button>
+
+        {/* ── Hero Card ── */}
+        <div className="rounded-2xl p-5 relative overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, hsl(120 30% 8%) 0%, hsl(140 25% 10%) 100%)' }}>
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-[10px] text-primary-foreground/70 uppercase tracking-wider leading-none">Free time</p>
-              <p className="font-heading text-lg font-bold text-primary-foreground leading-tight">{freeHours}h {freeMin}m</p>
+              <p className="text-[10px] text-primary/60 uppercase tracking-widest font-bold mb-1">
+                Week · {format(today, 'MMMM yyyy')}
+              </p>
+              <h1 className="font-heading text-4xl font-black text-white leading-none">
+                {format(today, 'EEEE')}
+              </h1>
+              <p className="text-sm text-white/40 mt-1">{format(today, 'd MMMM yyyy')}</p>
+            </div>
+            {streak > 0 && (
+              <div className="bg-black/30 rounded-2xl px-3 py-2 text-center border border-white/5">
+                <span className="text-2xl">🔥</span>
+                <p className="font-heading text-xl font-black text-white leading-none">{streak}</p>
+                <p className="text-[9px] text-white/40 uppercase tracking-wider mt-0.5">Day Streak</p>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-black/20 rounded-xl p-3 border border-white/5">
+              <p className="font-heading text-2xl font-black text-primary leading-none">
+                {freeHours > 0 ? `${freeHours}.${Math.round(freeMin/6)}h` : `${freeMin}m`}
+              </p>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Free Today</p>
+            </div>
+            <div className="bg-black/20 rounded-xl p-3 border border-white/5">
+              <p className="font-heading text-2xl font-black text-yellow-400 leading-none">
+                {todayDeadlines.length}
+              </p>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Deadlines</p>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Night Mode Button */}
-      <button
-        onClick={() => setNightMode(!nightMode)}
-        className={cn(
-          "relative w-full rounded-2xl p-4 mb-6 overflow-hidden transition-all border",
-          nightMode
-            ? "border-primary/40 shadow-[0_0_30px_-5px_hsl(var(--primary)/0.4)]"
-            : "border-border/40"
-        )}
-        style={{
-          background: 'linear-gradient(135deg, hsl(260 50% 12%) 0%, hsl(240 60% 8%) 50%, hsl(280 40% 14%) 100%)',
-        }}
-      >
-        {/* Stars */}
-        <div className="absolute inset-0 opacity-60">
-          <div className="absolute top-2 left-8 w-1 h-1 bg-white rounded-full" />
-          <div className="absolute top-6 left-20 w-0.5 h-0.5 bg-white rounded-full" />
-          <div className="absolute top-3 right-12 w-1 h-1 bg-primary rounded-full animate-pulse" />
-          <div className="absolute bottom-4 left-32 w-0.5 h-0.5 bg-white rounded-full" />
-          <div className="absolute bottom-2 right-20 w-1 h-1 bg-white/70 rounded-full" />
-          <div className="absolute top-1/2 right-8 w-0.5 h-0.5 bg-primary rounded-full" />
-        </div>
-        <div className="relative flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
-            <Moon className={cn("w-5 h-5 text-primary transition-transform", nightMode && "rotate-12")} />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="font-heading text-base font-bold text-white leading-tight">
-              {nightMode ? "Night mode on" : "Tonight I'm Going Out"}
-            </p>
-            <p className="text-xs text-white/60 mt-0.5">
-              {nightMode ? "We'll keep tomorrow light" : "Tap to enable late-night mode"}
-            </p>
-          </div>
-          <div className={cn(
-            "w-11 h-6 rounded-full p-0.5 transition-colors shrink-0",
-            nightMode ? "bg-primary" : "bg-white/20"
-          )}>
-            <div className={cn(
-              "w-5 h-5 rounded-full bg-white transition-transform",
-              nightMode && "translate-x-5"
-            )} />
-          </div>
-        </div>
-      </button>
-
-      {/* Today's Schedule */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-heading text-lg font-bold">Today's Schedule</h2>
-        <Link to="/plan" className="text-xs text-primary font-semibold">View all →</Link>
-      </div>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="glass-card rounded-2xl p-4 animate-pulse h-20" />
+        {/* ── Stats Row ── */}
+        <div className="rounded-2xl p-4 grid grid-cols-3 gap-2"
+          style={{ background: 'linear-gradient(135deg, hsl(120 25% 7%) 0%, hsl(140 20% 9%) 100%)' }}>
+          {[
+            { value: '—', label: 'DAYS LEFT', colour: 'text-primary' },
+            { value: tasksDone, label: 'TASKS DONE', colour: 'text-cyan-400' },
+            { value: overdueCount, label: 'OVERDUE', colour: 'text-red-400' },
+          ].map(({ value, label, colour }) => (
+            <div key={label} className="text-center">
+              <p className={cn('font-heading text-2xl font-black leading-none', colour)}>{value}</p>
+              <p className="text-[9px] text-white/30 uppercase tracking-wider mt-1">{label}</p>
+            </div>
           ))}
         </div>
-      ) : events.length === 0 ? (
-        <div className="glass-card rounded-2xl p-8 text-center">
-          <Sparkles className="w-6 h-6 text-primary mx-auto mb-2" />
-          <p className="font-heading font-bold text-base mb-1">Wide open day</p>
-          <p className="text-muted-foreground text-xs">No events scheduled — go make it count.</p>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {events.map((event, idx) => {
-            const accent = ACCENT_COLOURS[idx % ACCENT_COLOURS.length];
-            return (
-              <div
-                key={event.id}
-                className="glass-card rounded-2xl p-4 flex items-stretch gap-3 relative overflow-hidden"
-                style={{ borderLeft: `4px solid ${accent}` }}
-              >
-                <div className="flex flex-col items-center justify-center min-w-[48px]">
-                  <p className="font-heading text-base font-bold leading-none" style={{ color: accent }}>
-                    {format(new Date(event.start_time), 'h:mm')}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase mt-0.5">
-                    {format(new Date(event.start_time), 'a')}
-                  </p>
-                </div>
-                <div className="w-px bg-border/40" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{event.title}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    {event.location && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{event.location}</span>
-                      </div>
-                    )}
-                    {event.course_code && (
-                      <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
-                        style={{ backgroundColor: `${accent}20`, color: accent }}
-                      >
-                        {event.course_code}
+
+        {/* ── TODAY Schedule ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Today</p>
+            <Link to="/plan" className="text-[10px] text-white/30 hover:text-primary transition-colors">
+              Full schedule →
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}
+            </div>
+          ) : events.length === 0 ? (
+            <div className="glass-card rounded-2xl p-6 text-center">
+              <p className="font-heading font-bold text-base mb-1">Wide open day</p>
+              <p className="text-muted-foreground text-xs">No classes scheduled — go make it count.</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {events.map((event) => {
+                const colour = event.colour || getEventColour(event.event_type);
+                const label = getEventTypeLabel(event.event_type);
+                return (
+                  <div key={event.id}
+                    className="flex items-stretch gap-3 glass-card rounded-xl px-3 py-3">
+                    <div className="flex flex-col justify-center min-w-[40px]">
+                      <p className="text-xs font-bold text-white/60 leading-none">
+                        {format(new Date(event.start_time), 'HH:mm')}
+                      </p>
+                    </div>
+                    <div className="w-0.5 rounded-full shrink-0 self-stretch"
+                      style={{ backgroundColor: colour }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-white leading-tight truncate">
+                        {event.title}
+                      </p>
+                      <p className="text-xs text-white/40 mt-0.5 truncate">
+                        {[event.location, event.course_code].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    {label && (
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-full self-center shrink-0"
+                        style={{ backgroundColor: `${colour}20`, color: colour }}>
+                        {label}
                       </span>
                     )}
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* ── AI Suggestions ── */}
+        <div>
+          <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold mb-2">
+            Suggestions
+          </p>
+          <div className="glass-card rounded-2xl p-4 text-center">
+            <p className="text-xs text-muted-foreground">
+              AI suggestions will appear here once your timetable is connected
+            </p>
+          </div>
+        </div>
+
+        {/* ── Teams & Societies ── */}
+        {teams.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">
+                Your Teams & Societies
+              </p>
+              <Link to="/social" className="text-[10px] text-white/30 hover:text-primary transition-colors">
+                See all →
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {teams.slice(0, 4).map(team => (
+                <button key={team.id} onClick={() => navigate('/social')}
+                  className="glass-card rounded-2xl p-4 text-left hover:bg-white/5 transition-colors">
+                  <span className="text-3xl">{team.emoji || '🏆'}</span>
+                  <p className="font-bold text-sm text-white mt-2 leading-tight">{team.name}</p>
+                  {team.sport && <p className="text-xs text-white/40 mt-0.5">{team.sport}</p>}
+                  <p className="text-[10px] text-primary mt-2">→ Team Hub</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Upgrade Banner ── */}
+        <div className="rounded-2xl p-4 flex items-center gap-3 border border-yellow-500/20"
+          style={{ background: 'linear-gradient(135deg, hsl(45 50% 8%) 0%, hsl(30 40% 6%) 100%)' }}>
+          <span className="text-xl shrink-0">⭐</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm text-white leading-tight">
+              Buy me a meal — I've got you for 4 months
+            </p>
+            <p className="text-[11px] text-white/40 mt-0.5">
+              £12.99 semester · Everything unlocked · No ads
+            </p>
+          </div>
+          <button className="shrink-0 bg-primary text-black text-xs font-black px-3 py-2 rounded-xl">
+            Get it
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }
