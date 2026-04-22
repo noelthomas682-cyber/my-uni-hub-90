@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { UserPlus, Trophy, QrCode, RefreshCw, Plus, X, Camera, MessageCircle } from 'lucide-react';
+import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -7,7 +7,7 @@ import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { BrowserQRCodeReader } from '@zxing/browser';
 
-type SubTab = 'contacts' | 'sports' | 'qr';
+type SubTab = 'contacts' | 'teams';
 
 function QRScanner({ onResult, onClose }: { onResult: (text: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -83,6 +83,7 @@ export default function SocialPage() {
   const [scanInput, setScanInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [showContactScanner, setShowContactScanner] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [teamName, setTeamName] = useState('');
@@ -123,48 +124,26 @@ export default function SocialPage() {
           setLoading(false);
         });
 
-    } else if (activeTab === 'sports') {
+    } else if (activeTab === 'teams') {
       supabase
         .from('team_members')
         .select('team_id, role')
         .eq('user_id', user.id)
         .then(async ({ data: memberships, error: memError }) => {
-          if (memError) {
-            console.error('team_members fetch error:', memError);
+          if (memError || !memberships || memberships.length === 0) {
             setTeams([]);
             setLoading(false);
             return;
           }
-          if (!memberships || memberships.length === 0) {
-            setTeams([]);
-            setLoading(false);
-            return;
-          }
-
           const teamIds = memberships.map((m: any) => m.team_id);
-          const { data: teamsData, error: teamsError } = await supabase
-            .from('teams')
-            .select('*')
-            .in('id', teamIds);
-
-          if (teamsError) {
-            console.error('teams fetch error:', teamsError);
-            setTeams([]);
-            setLoading(false);
-            return;
-          }
-
+          const { data: teamsData } = await supabase.from('teams').select('*').in('id', teamIds);
           const merged = (teamsData || []).map((t: any) => {
             const membership = memberships.find((m: any) => m.team_id === t.id);
             return { ...t, myRole: membership?.role || 'member' };
           });
-
           setTeams(merged);
           setLoading(false);
         });
-
-    } else {
-      setLoading(false);
     }
   }, [user, activeTab]);
 
@@ -203,7 +182,7 @@ export default function SocialPage() {
     toast.success(`Added ${found.full_name || found.email} as a contact`);
     setScanInput('');
     setScanning(false);
-    setActiveTab('contacts');
+    setShowQR(false);
   };
 
   const joinTeamByCode = async (raw: string) => {
@@ -214,12 +193,7 @@ export default function SocialPage() {
     const { data: team, error: teamError } = await supabase
       .from('teams').select('*').eq('invite_code', code).single();
 
-    if (!team || teamError) {
-      console.error('join team error:', teamError);
-      toast.error('Invalid team code');
-      setJoining(false);
-      return;
-    }
+    if (!team || teamError) { toast.error('Invalid team code'); setJoining(false); return; }
 
     const { data: existing } = await supabase.from('team_members').select('team_id')
       .eq('team_id', team.id).eq('user_id', user.id).maybeSingle();
@@ -230,12 +204,7 @@ export default function SocialPage() {
       team_id: team.id, user_id: user.id, role: 'member',
     });
 
-    if (insertError) {
-      console.error('team_members insert error:', insertError);
-      toast.error('Could not join team');
-      setJoining(false);
-      return;
-    }
+    if (insertError) { toast.error('Could not join team'); setJoining(false); return; }
 
     const { data: conv } = await supabase.from('conversations')
       .select('id').eq('team_id', team.id).maybeSingle();
@@ -250,7 +219,6 @@ export default function SocialPage() {
     setTeams(prev => [...prev, { ...team, myRole: 'member' }]);
     setJoinInput('');
     setJoining(false);
-    setActiveTab('sports');
   };
 
   const createTeam = async () => {
@@ -273,20 +241,9 @@ export default function SocialPage() {
       .select()
       .single();
 
-    if (error) {
-      console.error('create team error:', error);
-      toast.error('Could not create team: ' + error.message);
-      setCreatingTeam(false);
-      return;
-    }
+    if (error) { toast.error('Could not create team: ' + error.message); setCreatingTeam(false); return; }
 
-    const { error: memberError } = await supabase.from('team_members').insert({
-      team_id: team.id, user_id: user.id, role: 'captain',
-    });
-
-    if (memberError) {
-      console.error('captain insert error:', memberError);
-    }
+    await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'captain' });
 
     const newTeam = { ...team, myRole: 'captain' };
     setTeams(prev => [...prev, newTeam]);
@@ -318,16 +275,8 @@ export default function SocialPage() {
     toast.success(`${team.name} created! Share the QR code to add members.`);
   };
 
-  const getTeamQRValue = (team: any) =>
-    `rute://team/${team.invite_token || team.invite_code}`;
-
+  const getTeamQRValue = (team: any) => `rute://team/${team.invite_token || team.invite_code}`;
   const qrValue = profile?.qr_token ? `rute://add/${profile.qr_token}` : '';
-
-  const tabs: { key: SubTab; label: string; icon: typeof UserPlus }[] = [
-    { key: 'contacts', label: 'Contacts', icon: UserPlus },
-    { key: 'sports', label: 'Teams', icon: Trophy },
-    { key: 'qr', label: 'QR Codes', icon: QrCode },
-  ];
 
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
@@ -354,8 +303,11 @@ export default function SocialPage() {
       <h1 className="font-heading text-2xl font-bold mb-5">Social</h1>
 
       <div className="flex gap-2 mb-5">
-        {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+        {[
+          { key: 'contacts', label: 'Contacts', icon: UserPlus },
+          { key: 'teams', label: 'Teams', icon: Trophy },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key as SubTab)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all',
               activeTab === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
@@ -371,13 +323,72 @@ export default function SocialPage() {
         </div>
       ) : (
         <>
+          {/* ── CONTACTS TAB ── */}
           {activeTab === 'contacts' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Your QR Code */}
+              <div className="glass-card rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-semibold text-sm">Your QR Code</p>
+                    <p className="text-xs text-muted-foreground">Share so classmates can add you</p>
+                  </div>
+                  <button onClick={() => setShowQR(!showQR)}
+                    className="flex items-center gap-1 text-xs text-primary font-medium">
+                    <QrCode className="w-3.5 h-3.5" />
+                    {showQR ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+
+                {showQR && (
+                  <div className="text-center pt-2">
+                    {qrValue ? (
+                      <div className="bg-white p-4 rounded-2xl inline-block mb-3">
+                        <QRCode value={qrValue} size={160} level="M" />
+                      </div>
+                    ) : (
+                      <div className="w-[160px] h-[160px] bg-secondary rounded-2xl mx-auto mb-3 animate-pulse" />
+                    )}
+                    <p className="text-xs text-muted-foreground mb-2">
+                      {profile?.full_name || 'Your name'}{profile?.university ? ` · ${profile.university}` : ''}
+                    </p>
+                    <button onClick={regenerateToken} disabled={regenerating}
+                      className="flex items-center gap-1.5 mx-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      <RefreshCw className={cn('w-3 h-3', regenerating && 'animate-spin')} />
+                      {regenerating ? 'Refreshing...' : 'Refresh QR code'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Add contact */}
+                <div className={cn('space-y-2', showQR && 'mt-4 pt-4 border-t border-border/40')}>
+                  <button onClick={() => setShowContactScanner(true)}
+                    className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary rounded-xl py-3 text-sm font-semibold hover:bg-primary/20 transition-colors">
+                    <Camera className="w-4 h-4" />Scan to Add Contact
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">or paste token</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={scanInput} onChange={e => setScanInput(e.target.value)}
+                      placeholder="Paste token..."
+                      className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                    <button onClick={() => addContactByToken(scanInput)} disabled={!scanInput.trim() || scanning}
+                      className="px-4 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
+                      {scanning ? '...' : 'Add'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contacts list */}
               {contacts.length === 0 ? (
-                <div className="text-center py-10">
+                <div className="text-center py-8">
                   <UserPlus className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground text-sm">No contacts yet</p>
-                  <p className="text-muted-foreground text-xs mt-1">Add classmates via QR code or join a team</p>
+                  <p className="text-xs text-muted-foreground mt-1">Scan a classmate's QR code to add them</p>
                 </div>
               ) : contacts.map(c => (
                 <div key={c.id} className="glass-card rounded-xl p-4 flex items-center gap-3">
@@ -395,8 +406,10 @@ export default function SocialPage() {
             </div>
           )}
 
-          {activeTab === 'sports' && (
+          {/* ── TEAMS TAB ── */}
+          {activeTab === 'teams' && (
             <div className="space-y-3">
+              {/* Create team */}
               {showCreateTeam ? (
                 <div className="glass-card rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -438,6 +451,7 @@ export default function SocialPage() {
                 </button>
               )}
 
+              {/* Join team */}
               <div className="glass-card rounded-2xl p-4">
                 <p className="font-semibold text-sm mb-3">Join a Team</p>
                 <button onClick={() => setShowJoinScanner(true)}
@@ -460,6 +474,7 @@ export default function SocialPage() {
                 </div>
               </div>
 
+              {/* Teams list */}
               {teams.length === 0 ? (
                 <div className="text-center py-8">
                   <Trophy className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -504,53 +519,6 @@ export default function SocialPage() {
                   )}
                 </div>
               ))}
-            </div>
-          )}
-
-          {activeTab === 'qr' && (
-            <div className="space-y-4">
-              <div className="glass-card rounded-2xl p-6 text-center">
-                <p className="font-heading font-bold text-base mb-1">Your QR Code</p>
-                <p className="text-xs text-muted-foreground mb-5">Share this so classmates can add you</p>
-                {qrValue ? (
-                  <div className="bg-white p-4 rounded-2xl inline-block mb-4">
-                    <QRCode value={qrValue} size={180} level="M" />
-                  </div>
-                ) : (
-                  <div className="w-[180px] h-[180px] bg-secondary rounded-2xl mx-auto mb-4 animate-pulse" />
-                )}
-                <p className="text-xs text-muted-foreground mb-3">
-                  {profile?.full_name || 'Your name'}{profile?.university ? ` · ${profile.university}` : ''}
-                </p>
-                <button onClick={regenerateToken} disabled={regenerating}
-                  className="flex items-center gap-2 mx-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  <RefreshCw className={cn('w-3.5 h-3.5', regenerating && 'animate-spin')} />
-                  {regenerating ? 'Refreshing...' : 'Refresh QR code'}
-                </button>
-              </div>
-
-              <div className="glass-card rounded-2xl p-5">
-                <p className="font-heading font-bold text-sm mb-1">Add a Contact</p>
-                <p className="text-xs text-muted-foreground mb-3">Scan their QR code or paste their token</p>
-                <button onClick={() => setShowContactScanner(true)}
-                  className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary rounded-xl py-3 text-sm font-semibold mb-3 hover:bg-primary/20 transition-colors">
-                  <Camera className="w-4 h-4" />Scan Contact QR Code
-                </button>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground">or paste token</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" value={scanInput} onChange={e => setScanInput(e.target.value)}
-                    placeholder="Paste rute://add/... or token"
-                    className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                  <button onClick={() => addContactByToken(scanInput)} disabled={!scanInput.trim() || scanning}
-                    className="px-4 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50">
-                    {scanning ? '...' : 'Add'}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </>
