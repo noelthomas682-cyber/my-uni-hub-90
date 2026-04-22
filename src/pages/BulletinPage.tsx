@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { MapPin, Clock, Check, Plus, X, Megaphone, CalendarCheck, GraduationCap, ExternalLink, RefreshCw } from 'lucide-react';
+import { MapPin, Clock, Check, Plus, X, Megaphone, GraduationCap, ExternalLink, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-type BulletinTab = 'deadlines' | 'sessions' | 'university';
+type BulletinTab = 'sessions' | 'university';
 
 export default function BulletinPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<BulletinTab>('deadlines');
+  const [activeTab, setActiveTab] = useState<BulletinTab>('sessions');
   const [sessions, setSessions] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [rsvps, setRsvps] = useState<Record<string, string>>({});
   const [captainTeams, setCaptainTeams] = useState<any[]>([]);
@@ -41,8 +40,7 @@ export default function BulletinPage() {
       .then(async ({ data: memberships }) => {
         if (!memberships || memberships.length === 0) return;
         const teamIds = memberships.map((m: any) => m.team_id);
-        const { data: teamsData } = await supabase
-          .from('teams').select('id, name, emoji').in('id', teamIds);
+        const { data: teamsData } = await supabase.from('teams').select('id, name, emoji').in('id', teamIds);
         const teams = teamsData || [];
         setCaptainTeams(teams);
         if (teams.length > 0) setNewTeamId(teams[0].id);
@@ -67,10 +65,8 @@ export default function BulletinPage() {
         }
 
         const { data: lmsConn } = await supabase
-          .from('lms_connections')
-          .select('email_domain, lms_name')
-          .eq('user_id', user.id)
-          .maybeSingle();
+          .from('lms_connections').select('email_domain, lms_name')
+          .eq('user_id', user.id).maybeSingle();
 
         if (lmsConn?.email_domain) {
           setUserDomain(lmsConn.email_domain);
@@ -88,9 +84,7 @@ export default function BulletinPage() {
 
     if (activeTab === 'sessions') {
       setLoading(true);
-      supabase.from('team_members')
-        .select('team_id')
-        .eq('user_id', user.id)
+      supabase.from('team_members').select('team_id').eq('user_id', user.id)
         .then(async ({ data: memberships }) => {
           const teamIds = (memberships || []).map((m: any) => m.team_id);
           if (teamIds.length === 0) { setSessions([]); setLoading(false); return; }
@@ -115,15 +109,6 @@ export default function BulletinPage() {
       if (domainLoading) return;
       if (!userDomain) { setLoading(false); return; }
       loadAnnouncements(userDomain);
-
-    } else {
-      setLoading(true);
-      supabase.from('tasks').select('*')
-        .eq('user_id', user.id)
-        .eq('completed', false)
-        .not('due_date', 'is', null)
-        .order('due_date').limit(30)
-        .then(({ data }) => { setTasks(data || []); setLoading(false); });
     }
   }, [user, activeTab, userDomain, domainLoading]);
 
@@ -160,14 +145,11 @@ export default function BulletinPage() {
     if (!user) return;
     const current = rsvps[sessionId];
     if (current) {
-      await supabase.from('session_rsvps').delete()
-        .eq('session_id', sessionId).eq('user_id', user.id);
+      await supabase.from('session_rsvps').delete().eq('session_id', sessionId).eq('user_id', user.id);
       setRsvps(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
       toast.success('RSVP removed');
     } else {
-      await supabase.from('session_rsvps').insert({
-        session_id: sessionId, user_id: user.id, status: 'going'
-      });
+      await supabase.from('session_rsvps').insert({ session_id: sessionId, user_id: user.id, status: 'going' });
       setRsvps(prev => ({ ...prev, [sessionId]: 'going' }));
       toast.success('You are going!');
     }
@@ -196,32 +178,6 @@ export default function BulletinPage() {
     setSaving(false);
   };
 
-  const getDaysUntil = (dateStr: string) => {
-    const diff = new Date(dateStr).getTime() - new Date().getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    if (days <= 0) return 'Due today';
-    if (days === 1) return 'Due tomorrow';
-    return 'Due in ' + days + 'd';
-  };
-
-  const getUrgencyColor = (dateStr: string) => {
-    const diff = new Date(dateStr).getTime() - new Date().getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    if (days <= 0) return 'text-destructive';
-    if (days <= 2) return 'text-orange-400';
-    if (days <= 7) return 'text-yellow-400';
-    return 'text-muted-foreground';
-  };
-
-  const getUrgencyBg = (dateStr: string) => {
-    const diff = new Date(dateStr).getTime() - new Date().getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    if (days <= 0) return 'bg-destructive';
-    if (days <= 2) return 'bg-orange-400';
-    if (days <= 7) return 'bg-yellow-400';
-    return 'bg-primary';
-  };
-
   const SESSION_TYPES = ['training', 'match', 'practice', 'trip', 'meeting', 'social', 'other'];
   const filteredAnnouncements = announcements.filter(a =>
     announcementFilter === 'all' ? true : a.source === announcementFilter
@@ -231,9 +187,8 @@ export default function BulletinPage() {
     <div className="px-5 pt-14 animate-fade-in pb-24">
       <h1 className="font-heading text-2xl font-bold mb-5">Bulletin</h1>
 
-      <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
+      <div className="flex gap-2 mb-5">
         {[
-          { key: 'deadlines', label: 'Deadlines', Icon: CalendarCheck },
           { key: 'sessions', label: 'Sessions', Icon: Megaphone },
           { key: 'university', label: 'University', Icon: GraduationCap },
         ].map(({ key, label, Icon }) => (
@@ -253,33 +208,6 @@ export default function BulletinPage() {
         </div>
       ) : (
         <>
-          {activeTab === 'deadlines' && (
-            <div className="space-y-3">
-              {tasks.length === 0 ? (
-                <div className="text-center py-16">
-                  <CalendarCheck className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground text-sm">No upcoming deadlines</p>
-                  <p className="text-xs text-muted-foreground mt-1">Add tasks with due dates in Plan</p>
-                </div>
-              ) : tasks.map(t => (
-                <div key={t.id} className="glass-card rounded-xl p-4 flex items-center gap-3">
-                  <div className={cn('w-1 self-stretch rounded-full shrink-0', getUrgencyBg(t.due_date))} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{t.title}</p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {t.course_code && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t.course_code}</span>}
-                      {t.category && <span className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full">{t.category}</span>}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={cn('text-xs font-semibold', getUrgencyColor(t.due_date))}>{getDaysUntil(t.due_date)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{format(new Date(t.due_date), 'MMM d')}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
           {activeTab === 'sessions' && (
             <div className="space-y-3">
               {captainTeams.length > 0 && (
