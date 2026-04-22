@@ -18,7 +18,7 @@ export default function Auth() {
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) return null;
-  if (user) return <Navigate to="/onboarding" replace />;
+  if (user) return <Navigate to="/home" replace />;
 
   const isEduEmail = email.includes('.edu') || email.includes('.ac.') || email.includes('.edu.');
 
