@@ -19,6 +19,7 @@ export default function BulletinPage() {
   const [userDomain, setUserDomain] = useState<string | null>(null);
   const [uniName, setUniName] = useState<string>('Your University');
   const [loading, setLoading] = useState(true);
+  const [domainLoading, setDomainLoading] = useState(true);
   const [fetchingFeed, setFetchingFeed] = useState(false);
   const [showAddSession, setShowAddSession] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -52,16 +53,19 @@ export default function BulletinPage() {
       .eq('id', user.id)
       .single()
       .then(async ({ data: profile }) => {
-        if (!profile) return;
+        if (!profile) { setDomainLoading(false); return; }
 
-        // Always set domain from profile first as guaranteed fallback
         if (profile.university) {
-          const derived = profile.university.toLowerCase().replace(/\s+/g, '') + '.ac.uk';
-          setUserDomain(derived);
-          setUniName('University of ' + profile.university.charAt(0).toUpperCase() + profile.university.slice(1));
+          let domain: string;
+          if (profile.university.includes('.')) {
+            domain = profile.university.toLowerCase();
+          } else {
+            domain = profile.university.toLowerCase().replace(/\s+/g, '') + '.ac.uk';
+          }
+          setUserDomain(domain);
+          setUniName('University of ' + profile.university.charAt(0).toUpperCase() + profile.university.slice(1).split('.')[0]);
         }
 
-        // Try lms_connections to override with better values
         const { data: lmsConn } = await supabase
           .from('lms_connections')
           .select('email_domain, lms_name')
@@ -74,14 +78,16 @@ export default function BulletinPage() {
             setUniName(lmsConn.lms_name);
           }
         }
+
+        setDomainLoading(false);
       });
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
 
     if (activeTab === 'sessions') {
+      setLoading(true);
       supabase.from('team_members')
         .select('team_id')
         .eq('user_id', user.id)
@@ -106,10 +112,12 @@ export default function BulletinPage() {
         });
 
     } else if (activeTab === 'university') {
+      if (domainLoading) return;
       if (!userDomain) { setLoading(false); return; }
       loadAnnouncements(userDomain);
 
     } else {
+      setLoading(true);
       supabase.from('tasks').select('*')
         .eq('user_id', user.id)
         .eq('completed', false)
@@ -117,7 +125,7 @@ export default function BulletinPage() {
         .order('due_date').limit(30)
         .then(({ data }) => { setTasks(data || []); setLoading(false); });
     }
-  }, [user, activeTab, userDomain]);
+  }, [user, activeTab, userDomain, domainLoading]);
 
   const loadAnnouncements = async (domain: string) => {
     setLoading(true);
