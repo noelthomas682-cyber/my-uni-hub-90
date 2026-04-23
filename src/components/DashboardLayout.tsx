@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import BottomNav from './BottomNav';
@@ -7,7 +7,6 @@ import BottomNav from './BottomNav';
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
-  const location = useLocation();
 
   useEffect(() => {
     if (!user) return;
@@ -29,10 +28,7 @@ export default function DashboardLayout() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
-  
-  if (!onboardingComplete && location.state?.fromOnboarding !== true) {
-    return <Navigate to="/onboarding" replace />;
-  }
+  if (!onboardingComplete) return <Navigate to="/onboarding" replace />;
 
   return (
     <div className="bg-background min-h-screen">
