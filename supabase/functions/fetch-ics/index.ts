@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
           due_date: event.due || event.end || null,
           description: event.description || null,
           source: 'ics', external_id: event.uid || null,
-          completed: false, priority: 'medium',
+          is_complete: false, priority: 'medium',
         }, { onConflict: 'user_id,external_id' })
         tasksCount++
       } else {
