@@ -144,13 +144,12 @@ export default function HomePage() {
       .order('start_time')
       .then(({ data }) => { setEvents(data || []); setLoading(false); });
 
-    // Fetch overdue + upcoming tasks (no lower date bound)
+    // Fetch all incomplete tasks with a due date
     supabase.from('tasks').select('*')
       .eq('user_id', user.id)
       .eq('is_complete', false)
       .not('due_date', 'is', null)
-      .lte('due_date', in30Days.toISOString())
-      .order('due_date').limit(10)
+      .order('due_date').limit(20)
       .then(({ data }) => { setTasks(data || []); });
 
     supabase.from('team_members')
