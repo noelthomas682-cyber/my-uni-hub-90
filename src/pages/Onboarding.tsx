@@ -113,7 +113,7 @@ export default function Onboarding() {
       const { data } = await supabase.from('profiles')
         .select('onboarding_complete').eq('id', user.id).single();
       if (data?.onboarding_complete === true) {
-        navigate('/home', { replace: true });
+        navigate('/home', { replace: true, state: { fromOnboarding: true } });
         return;
       }
       if (user.email) {
@@ -139,7 +139,6 @@ export default function Onboarding() {
     }
 
     const domain = detected?.domain || getDomain(user.email || '');
-    // Save assignments URL as the primary base_url for resyncing
     const baseUrl = type === 'assignments' ? url.trim() : (assignmentsUrl.trim() || url.trim());
     await supabase.from('lms_connections').upsert({
       user_id: user.id,
@@ -184,6 +183,7 @@ export default function Onboarding() {
     if (!user) return;
     setSaving(true);
     const uniDomain = detected?.domain || getDomain(user.email || '') || '';
+
     await supabase.from('profiles').update({
       full_name: fullName,
       university: uniDomain,
@@ -193,14 +193,17 @@ export default function Onboarding() {
       onboarding_complete: true,
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
+
     await supabase.from('sleep_schedule').upsert({
       user_id: user.id,
       sleep_time: sleepTime,
       wake_time: wakeTime,
       updated_at: new Date().toISOString(),
     });
+
     setSaving(false);
-    navigate('/home');
+    // Pass state so DashboardLayout knows onboarding just completed
+    navigate('/home', { replace: true, state: { fromOnboarding: true } });
   };
 
   if (checking) return null;
@@ -217,7 +220,6 @@ export default function Onboarding() {
           ))}
         </div>
 
-        {/* ── STEP 1 ── */}
         {step === 1 && (
           <div className="space-y-6">
             <div className="text-center">
@@ -241,7 +243,6 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* ── STEP 2 — Two calendars ── */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="text-center">
@@ -251,7 +252,6 @@ export default function Onboarding() {
               </p>
             </div>
 
-            {/* Schedule */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -263,7 +263,6 @@ export default function Onboarding() {
                 </div>
                 {importedSchedule && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
               </div>
-
               {!importedSchedule && (
                 <>
                   <button onClick={() => window.open('https://outlook.office365.com/calendar/view/month', '_blank')}
@@ -287,7 +286,6 @@ export default function Onboarding() {
               )}
             </div>
 
-            {/* Assignments */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -299,7 +297,6 @@ export default function Onboarding() {
                 </div>
                 {importedAssignments && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
               </div>
-
               {!importedAssignments && (
                 <>
                   {detected?.lmsPortalUrl && (
@@ -334,7 +331,6 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* ── STEP 3 ── */}
         {step === 3 && (
           <div className="space-y-6">
             <div className="text-center">

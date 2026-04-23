@@ -18,7 +18,7 @@ export default function DashboardLayout() {
       .then(({ data }) => {
         setOnboardingComplete(data?.onboarding_complete === true);
       });
-  }, [user, location.pathname]);
+  }, [user]);
 
   if (loading || (user && onboardingComplete === null)) {
     return (
@@ -29,7 +29,10 @@ export default function DashboardLayout() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
-  if (!onboardingComplete) return <Navigate to="/onboarding" replace />;
+  
+  if (!onboardingComplete && location.state?.fromOnboarding !== true) {
+    return <Navigate to="/onboarding" replace />;
+  }
 
   return (
     <div className="bg-background min-h-screen">
