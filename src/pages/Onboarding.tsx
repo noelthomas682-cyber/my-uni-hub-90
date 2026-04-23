@@ -113,7 +113,7 @@ export default function Onboarding() {
       const { data } = await supabase.from('profiles')
         .select('onboarding_complete').eq('id', user.id).single();
       if (data?.onboarding_complete === true) {
-        navigate('/home', { replace: true, state: { fromOnboarding: true } });
+        navigate('/home', { replace: true });
         return;
       }
       if (user.email) {
@@ -184,7 +184,9 @@ export default function Onboarding() {
     setSaving(true);
     const uniDomain = detected?.domain || getDomain(user.email || '') || '';
 
-    await supabase.from('profiles').update({
+    await supabase.from('profiles').upsert({
+      id: user.id,
+      email: user.email,
       full_name: fullName,
       university: uniDomain,
       course,
@@ -192,7 +194,7 @@ export default function Onboarding() {
       use_mode: 'student',
       onboarding_complete: true,
       updated_at: new Date().toISOString(),
-    }).eq('id', user.id);
+    }, { onConflict: 'id' });
 
     await supabase.from('sleep_schedule').upsert({
       user_id: user.id,
@@ -202,8 +204,7 @@ export default function Onboarding() {
     });
 
     setSaving(false);
-    // Pass state so DashboardLayout knows onboarding just completed
-    navigate('/home', { replace: true, state: { fromOnboarding: true } });
+    navigate('/home', { replace: true });
   };
 
   if (checking) return null;
