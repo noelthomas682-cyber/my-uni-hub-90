@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+\import { useEffect, useState } from 'react';
 import { format, isToday } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { Moon, Plus, Bell, MessageCircle } from 'lucide-react';
+import { Moon, Plus, Bell, MessageCircle, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CalendarEvent {
@@ -53,6 +53,21 @@ function getEventTypeLabel(type: string | null) {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
+function formatTime(time: string) {
+  const [h, m] = time.split(':');
+  const hour = parseInt(h);
+  const ampm = hour >= 12 ? 'pm' : 'am';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${m}${ampm}`;
+}
+
+const ACTIVITY_EMOJIS: Record<string, string> = {
+  'Gym': '🏋️', 'Running': '🏃', 'Soccer': '⚽', 'Basketball': '🏀',
+  'Swimming': '🏊', 'Piano': '🎹', 'Guitar': '🎸', 'Reading': '📚',
+  'Gaming': '🎮', 'Cooking': '🍳', 'Yoga': '🧘', 'Cycling': '🚴',
+  'Dancing': '💃', 'Art': '🎨', 'Meditation': '🧠',
+};
+
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +75,8 @@ export default function HomePage() {
   const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
+  const [sleepSchedule, setSleepSchedule] = useState<any>(null);
+  const [activities, setActivities] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [nightMode, setNightMode] = useState(false);
   const today = new Date();
@@ -75,9 +92,19 @@ export default function HomePage() {
     in14Days.setDate(today.getDate() + 14);
 
     supabase.from('profiles')
-      .select('full_name, university, streak_count')
+      .select('full_name, university, streak_count, activities')
       .eq('id', user.id).single()
-      .then(({ data }) => { if (data) setProfile(data); });
+      .then(({ data }) => {
+        if (data) {
+          setProfile(data);
+          if (data.activities) setActivities(data.activities);
+        }
+      });
+
+    supabase.from('sleep_schedule')
+      .select('sleep_time, wake_time')
+      .eq('user_id', user.id).single()
+      .then(({ data }) => { if (data) setSleepSchedule(data); });
 
     supabase.from('calendar_events').select('*')
       .eq('user_id', user.id)
@@ -246,6 +273,54 @@ export default function HomePage() {
             </div>
           ))}
         </div>
+
+        {/* ── Sleep & Activities ── */}
+        {(sleepSchedule || activities.length > 0) && (
+          <div className="rounded-2xl p-4 space-y-3"
+            style={{ background: 'linear-gradient(135deg, hsl(240 30% 8%) 0%, hsl(260 25% 10%) 100%)' }}>
+            {sleepSchedule && (
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Moon className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Sleep Schedule</p>
+                  <p className="text-sm font-semibold text-white mt-0.5">
+                    {formatTime(sleepSchedule.sleep_time)} → {formatTime(sleepSchedule.wake_time)}
+                  </p>
+                </div>
+              </div>
+            )}
+            {activities.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="w-3.5 h-3.5 text-primary" />
+                  <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Make Time For</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activities.map((a: string) => (
+                    <span key={a}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-white/70">
+                      <span>{ACTIVITY_EMOJIS[a] || '✨'}</span>
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── No schedule prompt ── */}
+        {!loading && events.length === 0 && (
+          <button
+            onClick={() => navigate('/lms-settings')}
+            className="w-full rounded-2xl p-4 border border-primary/20 text-left"
+            style={{ background: 'linear-gradient(135deg, hsl(260 30% 8%) 0%, hsl(280 25% 10%) 100%)' }}>
+            <p className="font-bold text-sm text-white">No classes today 📅</p>
+            <p className="text-xs text-white/40 mt-1">Connect your LMS to sync your timetable and deadlines →</p>
+          </button>
+        )}
 
         {/* ── TODAY Schedule ── */}
         <div>

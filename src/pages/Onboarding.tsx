@@ -193,6 +193,7 @@ export default function Onboarding() {
       year: parseInt(year) || null,
       use_mode: 'student',
       onboarding_complete: true,
+      activities: selectedActivities,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
 
