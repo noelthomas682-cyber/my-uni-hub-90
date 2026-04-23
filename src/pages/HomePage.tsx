@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { format, isToday } from 'date-fns';
+import { format, isToday, isPast, differenceInDays } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -68,11 +68,42 @@ const ACTIVITY_EMOJIS: Record<string, string> = {
   'Dancing': '💃', 'Art': '🎨', 'Meditation': '🧠',
 };
 
+function getTaskStatus(dueDate: string) {
+  const due = new Date(dueDate);
+  const now = new Date();
+  if (isPast(due) && !isToday(due)) return 'overdue';
+  if (isToday(due)) return 'today';
+  if (differenceInDays(due, now) <= 7) return 'soon';
+  return 'upcoming';
+}
+
+function getTaskLabel(dueDate: string) {
+  const due = new Date(dueDate);
+  const now = new Date();
+  if (isPast(due) && !isToday(due)) {
+    const days = differenceInDays(now, due);
+    return days === 1 ? '1 day overdue' : `${days} days overdue`;
+  }
+  if (isToday(due)) return 'Due today';
+  const days = differenceInDays(due, now);
+  if (days <= 7) return `Due in ${days}d`;
+  return format(due, 'MMM d');
+}
+
+function getTaskColour(status: string) {
+  switch (status) {
+    case 'overdue': return { dot: 'bg-red-500', text: 'text-red-400', badge: 'bg-red-500/10 text-red-400' };
+    case 'today': return { dot: 'bg-yellow-400', text: 'text-yellow-400', badge: 'bg-yellow-400/10 text-yellow-400' };
+    case 'soon': return { dot: 'bg-orange-400', text: 'text-orange-400', badge: 'bg-orange-400/10 text-orange-400' };
+    default: return { dot: 'bg-white/20', text: 'text-white/40', badge: 'bg-white/5 text-white/40' };
+  }
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [sleepSchedule, setSleepSchedule] = useState<any>(null);
@@ -88,8 +119,8 @@ export default function HomePage() {
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
-    const in14Days = new Date(today);
-    in14Days.setDate(today.getDate() + 14);
+    const in30Days = new Date(today);
+    in30Days.setDate(today.getDate() + 30);
 
     supabase.from('profiles')
       .select('full_name, university, streak_count, activities')
@@ -113,14 +144,14 @@ export default function HomePage() {
       .order('start_time')
       .then(({ data }) => { setEvents(data || []); setLoading(false); });
 
+    // Fetch overdue + upcoming tasks (no lower date bound)
     supabase.from('tasks').select('*')
       .eq('user_id', user.id)
       .eq('completed', false)
       .not('due_date', 'is', null)
-      .gte('due_date', startOfDay.toISOString())
-      .lte('due_date', in14Days.toISOString())
-      .order('due_date').limit(5)
-      .then(({ data }) => { setUpcomingTasks(data || []); });
+      .lte('due_date', in30Days.toISOString())
+      .order('due_date').limit(10)
+      .then(({ data }) => { setTasks(data || []); });
 
     supabase.from('team_members')
       .select('team_id, role')
@@ -148,8 +179,9 @@ export default function HomePage() {
   const freeMinutes = Math.max(0, 16 * 60 - totalClassMinutes);
   const freeHours = Math.floor(freeMinutes / 60);
   const freeMin = Math.round(freeMinutes % 60);
-  const todayDeadlines = upcomingTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
-  const overdueCount = 0;
+
+  const todayDeadlines = tasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
+  const overdueTasks = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
   const tasksDone = 0;
 
   return (
@@ -176,8 +208,8 @@ export default function HomePage() {
             onClick={() => toast('No new notifications')}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
             <Bell className="w-4 h-4 text-foreground" />
-            {upcomingTasks.length > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full" />
+            {(todayDeadlines.length > 0 || overdueTasks.length > 0) && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
             )}
           </button>
         </div>
@@ -243,7 +275,7 @@ export default function HomePage() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="bg-black/20 rounded-xl p-3 border border-white/5">
               <p className="font-heading text-2xl font-black text-primary leading-none">
                 {freeHours > 0 ? `${freeHours}.${Math.round(freeMin/6)}h` : `${freeMin}m`}
@@ -254,24 +286,15 @@ export default function HomePage() {
               <p className="font-heading text-2xl font-black text-yellow-400 leading-none">
                 {todayDeadlines.length}
               </p>
-              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Deadlines</p>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Due Today</p>
+            </div>
+            <div className="bg-black/20 rounded-xl p-3 border border-white/5">
+              <p className="font-heading text-2xl font-black text-red-400 leading-none">
+                {overdueTasks.length}
+              </p>
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Overdue</p>
             </div>
           </div>
-        </div>
-
-        {/* ── Stats Row ── */}
-        <div className="rounded-2xl p-4 grid grid-cols-3 gap-2"
-          style={{ background: 'linear-gradient(135deg, hsl(120 25% 7%) 0%, hsl(140 20% 9%) 100%)' }}>
-          {[
-            { value: '—', label: 'DAYS LEFT', colour: 'text-primary' },
-            { value: tasksDone, label: 'TASKS DONE', colour: 'text-cyan-400' },
-            { value: overdueCount, label: 'OVERDUE', colour: 'text-red-400' },
-          ].map(({ value, label, colour }) => (
-            <div key={label} className="text-center">
-              <p className={cn('font-heading text-2xl font-black leading-none', colour)}>{value}</p>
-              <p className="text-[9px] text-white/30 uppercase tracking-wider mt-1">{label}</p>
-            </div>
-          ))}
         </div>
 
         {/* ── Sleep & Activities ── */}
@@ -310,6 +333,45 @@ export default function HomePage() {
             )}
           </div>
         )}
+
+        {/* ── Tasks (overdue + upcoming) ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Tasks & Deadlines</p>
+            <Link to="/plan" className="text-[10px] text-white/30 hover:text-primary transition-colors">
+              See all →
+            </Link>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="glass-card rounded-2xl p-5 text-center">
+              <p className="font-heading font-bold text-sm mb-1">No tasks yet</p>
+              <p className="text-muted-foreground text-xs">Sync your LMS or add tasks manually</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {tasks.map((task) => {
+                const status = getTaskStatus(task.due_date!);
+                const label = getTaskLabel(task.due_date!);
+                const colours = getTaskColour(status);
+                return (
+                  <div key={task.id}
+                    className="flex items-center gap-3 glass-card rounded-xl px-3 py-3">
+                    <div className={cn('w-2 h-2 rounded-full shrink-0', colours.dot)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-white leading-tight truncate">
+                        {task.title}
+                      </p>
+                    </div>
+                    <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* ── No schedule prompt ── */}
         {!loading && events.length === 0 && (
