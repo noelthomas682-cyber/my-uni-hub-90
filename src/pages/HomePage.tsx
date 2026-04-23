@@ -22,7 +22,7 @@ interface Task {
   id: string;
   title: string;
   due_date: string | null;
-  completed: boolean;
+  is_complete: boolean;
   priority: string | null;
   category: string | null;
 }
@@ -147,7 +147,7 @@ export default function HomePage() {
     // Fetch overdue + upcoming tasks (no lower date bound)
     supabase.from('tasks').select('*')
       .eq('user_id', user.id)
-      .eq('completed', false)
+      .eq('is_complete', false)
       .not('due_date', 'is', null)
       .lte('due_date', in30Days.toISOString())
       .order('due_date').limit(10)
