@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, isPast, isToday, differenceInDays } from 'date-fns';
 import { Calendar, CheckSquare, Target, Plus, Trophy, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,6 +18,37 @@ interface Goal {
   is_complete: boolean | null;
   completed_at: string | null;
   created_at: string;
+}
+
+function getTaskStatus(dueDate: string) {
+  const due = new Date(dueDate);
+  const now = new Date();
+  if (isPast(due) && !isToday(due)) return 'overdue';
+  if (isToday(due)) return 'today';
+  if (differenceInDays(due, now) <= 7) return 'soon';
+  return 'upcoming';
+}
+
+function getTaskLabel(dueDate: string) {
+  const due = new Date(dueDate);
+  const now = new Date();
+  if (isPast(due) && !isToday(due)) {
+    const days = differenceInDays(now, due);
+    return days === 1 ? '1 day overdue' : `${days} days overdue`;
+  }
+  if (isToday(due)) return 'Due today';
+  const days = differenceInDays(due, now);
+  if (days <= 7) return `Due in ${days}d`;
+  return format(due, 'MMM d');
+}
+
+function getTaskColours(status: string) {
+  switch (status) {
+    case 'overdue': return { badge: 'bg-red-500/15 text-red-400', dot: 'bg-red-500' };
+    case 'today': return { badge: 'bg-yellow-400/15 text-yellow-400', dot: 'bg-yellow-400' };
+    case 'soon': return { badge: 'bg-orange-400/15 text-orange-400', dot: 'bg-orange-400' };
+    default: return { badge: 'bg-white/5 text-white/40', dot: 'bg-white/20' };
+  }
 }
 
 export default function PlanPage() {
@@ -54,8 +85,10 @@ export default function PlanPage() {
         .then(({ data }) => { setEvents(data || []); setLoading(false); });
     } else if (activeTab === 'tasks') {
       supabase.from('tasks').select('*')
+        .eq('user_id', user.id)
         .eq('is_complete', false)
-        .order('due_date', { ascending: true, nullsFirst: false }).limit(20)
+        .not('due_date', 'is', null)
+        .order('due_date', { ascending: true, nullsFirst: false })
         .then(({ data }) => { setTasks(data || []); setLoading(false); });
     } else {
       supabase.from('goals').select('*')
@@ -132,7 +165,8 @@ export default function PlanPage() {
       is_complete: !isComplete,
       completed_at: !isComplete ? new Date().toISOString() : null,
     }).eq('id', id);
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, is_complete: !isComplete } : t));
+    setTasks(prev => prev.filter(t => t.id !== id));
+    toast.success(!isComplete ? 'Task completed ✓' : 'Task reopened');
   };
 
   const tabs = [
@@ -262,22 +296,31 @@ export default function PlanPage() {
               )}
               {tasks.length === 0 ? (
                 <p className="text-muted-foreground text-sm text-center py-10">All caught up!</p>
-              ) : tasks.map(t => (
-                <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                  className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
-                  <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0",
-                    t.is_complete ? "bg-primary border-primary" : "border-muted-foreground")}>
-                    {t.is_complete && <CheckSquare className="w-3 h-3 text-primary-foreground" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{t.title}</p>
-                    {t.due_date && <p className="text-xs text-muted-foreground">{format(new Date(t.due_date), 'MMM d')}</p>}
-                  </div>
-                  {t.priority === 'high' && (
-                    <span className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full">High</span>
-                  )}
-                </button>
-              ))}
+              ) : tasks.map(t => {
+                const status = t.due_date ? getTaskStatus(t.due_date) : 'upcoming';
+                const label = t.due_date ? getTaskLabel(t.due_date) : null;
+                const colours = getTaskColours(status);
+                return (
+                  <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
+                    className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
+                    <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0",
+                      t.is_complete ? "bg-primary border-primary" : "border-muted-foreground")}>
+                      {t.is_complete && <CheckSquare className="w-3 h-3 text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{t.title}</p>
+                      {t.course_code && (
+                        <p className="text-xs text-muted-foreground">{t.course_code}</p>
+                      )}
+                    </div>
+                    {label && (
+                      <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
+                        {label}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
