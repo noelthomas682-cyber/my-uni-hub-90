@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import BottomNav from './BottomNav';
@@ -7,6 +7,7 @@ import BottomNav from './BottomNav';
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     if (!user) return;
@@ -17,7 +18,7 @@ export default function DashboardLayout() {
       .then(({ data }) => {
         setOnboardingComplete(data?.onboarding_complete === true);
       });
-  }, [user]);
+  }, [user, location.pathname]);
 
   if (loading || (user && onboardingComplete === null)) {
     return (
