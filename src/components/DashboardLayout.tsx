@@ -1,11 +1,25 @@
+import { useState, useEffect } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import BottomNav from './BottomNav';
 
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
 
-  if (loading) {
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('profiles')
+      .select('onboarding_complete')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }) => {
+        setOnboardingComplete(data?.onboarding_complete === true);
+      });
+  }, [user]);
+
+  if (loading || (user && onboardingComplete === null)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -14,6 +28,7 @@ export default function DashboardLayout() {
   }
 
   if (!user) return <Navigate to="/auth" replace />;
+  if (!onboardingComplete) return <Navigate to="/onboarding" replace />;
 
   return (
     <div className="bg-background min-h-screen">
