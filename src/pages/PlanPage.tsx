@@ -234,6 +234,10 @@ export default function PlanPage() {
     { key: 'goals' as SubTab, label: 'Goals', icon: Target },
   ];
 
+  // Split incomplete tasks into dated and undated
+  const datedTasks = tasks.filter(t => t.due_date);
+  const undatedTasks = tasks.filter(t => !t.due_date);
+
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
       <h1 className="font-heading text-2xl font-bold mb-5">Plan</h1>
@@ -359,27 +363,47 @@ export default function PlanPage() {
                 <p className="text-muted-foreground text-sm text-center py-10">All caught up!</p>
               ) : (
                 <>
-                  {tasks.map(t => {
-                    const status = t.due_date ? getTaskStatus(t.due_date) : 'upcoming';
-                    const label = t.due_date ? getTaskLabel(t.due_date) : null;
+                  {/* Dated tasks */}
+                  {datedTasks.map(t => {
+                    const status = getTaskStatus(t.due_date);
+                    const label = getTaskLabel(t.due_date);
                     const colours = getTaskColours(status);
                     return (
                       <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
                         className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
-                        <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0", "border-muted-foreground")} />
+                        <div className="w-5 h-5 rounded-md border-2 border-muted-foreground flex items-center justify-center shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{t.title}</p>
                           {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
                         </div>
-                        {label && (
-                          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
-                            {label}
-                          </span>
-                        )}
+                        <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
+                          {label}
+                        </span>
                       </button>
                     );
                   })}
 
+                  {/* Someday — tasks with no due date */}
+                  {undatedTasks.length > 0 && (
+                    <>
+                      <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold pt-2">Someday</p>
+                      {undatedTasks.map(t => (
+                        <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
+                          className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
+                          <div className="w-5 h-5 rounded-md border-2 border-muted-foreground/40 flex items-center justify-center shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate text-muted-foreground">{t.title}</p>
+                            {t.course_code && <p className="text-xs text-muted-foreground/60">{t.course_code}</p>}
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 bg-white/5 text-white/30">
+                            No deadline
+                          </span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Completed tasks */}
                   {completedTasks.length > 0 && (
                     <>
                       <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
