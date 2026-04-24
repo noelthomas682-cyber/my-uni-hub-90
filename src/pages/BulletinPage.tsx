@@ -1,12 +1,26 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { MapPin, Clock, Check, Plus, X, Megaphone, GraduationCap, ExternalLink, RefreshCw } from 'lucide-react';
+import { MapPin, Clock, Check, Plus, X, Megaphone, GraduationCap, ExternalLink, RefreshCw, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type BulletinTab = 'sessions' | 'university';
+
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="glass-card rounded-xl p-4 flex items-center gap-3 border border-red-500/20">
+      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+      <p className="text-xs text-red-400 flex-1">{message}</p>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 text-red-400">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function BulletinPage() {
   const { user } = useAuth();
@@ -20,6 +34,7 @@ export default function BulletinPage() {
   const [loading, setLoading] = useState(true);
   const [domainLoading, setDomainLoading] = useState(true);
   const [fetchingFeed, setFetchingFeed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showAddSession, setShowAddSession] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newStart, setNewStart] = useState('');
@@ -50,8 +65,8 @@ export default function BulletinPage() {
       .select('university')
       .eq('id', user.id)
       .single()
-      .then(async ({ data: profile }) => {
-        if (!profile) { setDomainLoading(false); return; }
+      .then(async ({ data: profile, error }) => {
+        if (error || !profile) { setDomainLoading(false); return; }
 
         if (profile.university) {
           let domain: string;
@@ -81,11 +96,13 @@ export default function BulletinPage() {
 
   useEffect(() => {
     if (!user) return;
+    setError(null);
 
     if (activeTab === 'sessions') {
       setLoading(true);
       supabase.from('team_members').select('team_id').eq('user_id', user.id)
-        .then(async ({ data: memberships }) => {
+        .then(async ({ data: memberships, error: membError }) => {
+          if (membError) { setError('Could not load sessions.'); setLoading(false); return; }
           const teamIds = (memberships || []).map((m: any) => m.team_id);
           if (teamIds.length === 0) { setSessions([]); setLoading(false); return; }
 
@@ -98,6 +115,7 @@ export default function BulletinPage() {
             supabase.from('session_rsvps').select('*').eq('user_id', user.id),
           ]);
 
+          if (sessRes.error) { setError('Could not load sessions.'); setLoading(false); return; }
           setSessions(sessRes.data || []);
           const map: Record<string, string> = {};
           (rsvpRes.data || []).forEach((r: any) => { map[r.session_id] = r.status; });
@@ -114,10 +132,12 @@ export default function BulletinPage() {
 
   const loadAnnouncements = async (domain: string) => {
     setLoading(true);
-    const { data } = await supabase
+    setError(null);
+    const { data, error } = await supabase
       .from('announcements').select('*')
       .eq('university_domain', domain)
       .order('published_at', { ascending: false }).limit(30);
+    if (error) { setError('Could not load announcements.'); setLoading(false); return; }
     setAnnouncements(data || []);
     setLoading(false);
     if (!data || data.length === 0) fetchUniFeed(domain);
@@ -129,6 +149,11 @@ export default function BulletinPage() {
     try {
       const { data, error } = await supabase.functions.invoke('fetch-uni-feed', { body: { domain } });
       if (error) throw new Error(error.message);
+      if (data?.error === 'University not supported yet') {
+        toast.error("Your university isn't in our system yet — we're adding new ones regularly.");
+        setFetchingFeed(false);
+        return;
+      }
       toast.success('Feed updated: ' + ((data?.news ?? 0) + (data?.events ?? 0)) + ' items');
       const { data: fresh } = await supabase
         .from('announcements').select('*')
@@ -136,7 +161,7 @@ export default function BulletinPage() {
         .order('published_at', { ascending: false }).limit(30);
       setAnnouncements(fresh || []);
     } catch (err: any) {
-      toast.error('Could not fetch feed: ' + err.message);
+      toast.error('Could not fetch feed. Please try again later.');
     }
     setFetchingFeed(false);
   };
@@ -145,11 +170,13 @@ export default function BulletinPage() {
     if (!user) return;
     const current = rsvps[sessionId];
     if (current) {
-      await supabase.from('session_rsvps').delete().eq('session_id', sessionId).eq('user_id', user.id);
+      const { error } = await supabase.from('session_rsvps').delete().eq('session_id', sessionId).eq('user_id', user.id);
+      if (error) { toast.error('Could not update RSVP'); return; }
       setRsvps(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
       toast.success('RSVP removed');
     } else {
-      await supabase.from('session_rsvps').insert({ session_id: sessionId, user_id: user.id, status: 'going' });
+      const { error } = await supabase.from('session_rsvps').insert({ session_id: sessionId, user_id: user.id, status: 'going' });
+      if (error) { toast.error('Could not RSVP'); return; }
       setRsvps(prev => ({ ...prev, [sessionId]: 'going' }));
       toast.success('You are going!');
     }
@@ -168,7 +195,7 @@ export default function BulletinPage() {
       session_type: newType,
     }).select('*, teams(name, emoji)').single();
 
-    if (error) { toast.error('Could not create session'); setSaving(false); return; }
+    if (error) { toast.error('Could not create session. Please try again.'); setSaving(false); return; }
     setSessions(prev => [data, ...prev].sort((a, b) =>
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     ));
@@ -201,6 +228,10 @@ export default function BulletinPage() {
           </button>
         ))}
       </div>
+
+      {error && <ErrorBanner message={error} onRetry={() => activeTab === 'sessions'
+        ? (setError(null) as any)
+        : userDomain && loadAnnouncements(userDomain)} />}
 
       {loading ? (
         <div className="space-y-3">

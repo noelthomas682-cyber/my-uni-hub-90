@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Send, Clock, Check, XCircle } from 'lucide-react';
+import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Send, Clock, Check, XCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,20 @@ const ACTIVITY_TYPES = [
   { key: 'other', label: 'Other', emoji: '✨' },
 ];
 
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="glass-card rounded-xl p-4 flex items-center gap-3 border border-red-500/20">
+      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+      <p className="text-xs text-red-400 flex-1">{message}</p>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 text-red-400">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function QRScanner({ onResult, onClose }: { onResult: (text: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -29,7 +43,7 @@ function QRScanner({ onResult, onClose }: { onResult: (text: string) => void; on
         onResult(result.getText());
       }
     }).catch(() => {
-      toast.error('Camera access denied');
+      toast.error('Camera access denied. Please allow camera access and try again.');
       onClose();
     });
     return () => { BrowserQRCodeReader.releaseAllStreams(); };
@@ -65,12 +79,8 @@ function GroupChatPrompt({ teamName, onYes, onNo }: { teamName: string; onYes: (
           <span className="text-foreground font-medium">{teamName}</span>? Members who join will be added automatically.
         </p>
         <div className="flex gap-3">
-          <button onClick={onNo} className="flex-1 bg-secondary text-muted-foreground rounded-xl py-2.5 text-sm font-semibold">
-            No thanks
-          </button>
-          <button onClick={onYes} className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold">
-            Yes, create it
-          </button>
+          <button onClick={onNo} className="flex-1 bg-secondary text-muted-foreground rounded-xl py-2.5 text-sm font-semibold">No thanks</button>
+          <button onClick={onYes} className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold">Yes, create it</button>
         </div>
       </div>
     </div>
@@ -87,30 +97,19 @@ function ActivityRequestSheet({ contact, onClose, onSent }: { contact: any; onCl
     if (!selectedType || !user) return;
     setSending(true);
     const activity = ACTIVITY_TYPES.find(a => a.key === selectedType);
-
     const { error } = await supabase.from('shared_activities').insert({
-      owner_id: user.id,
-      partner_id: contact.id,
-      activity_type: selectedType,
-      title: `${activity?.emoji} ${activity?.label}`,
-      note: note.trim() || null,
-      status: 'pending',
-      require_consent: true,
+      owner_id: user.id, partner_id: contact.id, activity_type: selectedType,
+      title: `${activity?.emoji} ${activity?.label}`, note: note.trim() || null,
+      status: 'pending', require_consent: true,
     });
-
-    if (error) { toast.error('Could not send request'); setSending(false); return; }
-
+    if (error) { toast.error('Could not send request. Please try again.'); setSending(false); return; }
     await supabase.from('notifications').insert({
-      user_id: contact.id,
-      title: 'Activity Request',
+      user_id: contact.id, title: 'Activity Request',
       body: `wants to ${activity?.label.toLowerCase()} with you${note ? `: "${note}"` : ''}`,
       notification_type: 'activity_request',
     });
-
     toast.success(`Request sent to ${contact.full_name || contact.email}!`);
-    setSending(false);
-    onSent();
-    onClose();
+    setSending(false); onSent(); onClose();
   };
 
   return (
@@ -153,24 +152,24 @@ function IncomingRequests({ userId }: { userId: string }) {
   useEffect(() => {
     supabase.from('shared_activities')
       .select('*, owner:profiles!shared_activities_owner_id_fkey(full_name, email)')
-      .eq('partner_id', userId)
-      .eq('status', 'pending')
+      .eq('partner_id', userId).eq('status', 'pending')
       .order('created_at', { ascending: false })
       .then(({ data }) => setRequests(data || []));
   }, [userId]);
 
   const respond = async (id: string, status: 'accepted' | 'declined') => {
-    await supabase.from('shared_activities').update({ status }).eq('id', id);
+    const { error } = await supabase.from('shared_activities').update({ status }).eq('id', id);
+    if (error) { toast.error('Could not update request'); return; }
     setRequests(prev => prev.filter(r => r.id !== id));
     toast.success(status === 'accepted' ? 'Request accepted!' : 'Request declined');
   };
 
   const suggestTime = async (id: string) => {
     if (!proposedTime) return;
-    await supabase.from('shared_activities').update({
-      status: 'rescheduled',
-      proposed_time: new Date(proposedTime).toISOString(),
+    const { error } = await supabase.from('shared_activities').update({
+      status: 'rescheduled', proposed_time: new Date(proposedTime).toISOString(),
     }).eq('id', id);
+    if (error) { toast.error('Could not suggest time'); return; }
     setRequests(prev => prev.filter(r => r.id !== id));
     setSuggestingFor(null);
     toast.success('Alternative time suggested!');
@@ -191,9 +190,7 @@ function IncomingRequests({ userId }: { userId: string }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm">{r.owner?.full_name || r.owner?.email}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {r.title}{r.note ? ` · "${r.note}"` : ''}
-              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">{r.title}{r.note ? ` · "${r.note}"` : ''}</p>
             </div>
           </div>
           {suggestingFor === r.id ? (
@@ -237,6 +234,7 @@ export default function SocialPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [scanInput, setScanInput] = useState('');
@@ -264,23 +262,28 @@ export default function SocialPage() {
       .then(({ data }) => { if (data) setProfile(data); });
   }, [user]);
 
-  useEffect(() => {
+  const loadTab = () => {
     if (!user) return;
     setLoading(true);
+    setError(null);
+
     if (activeTab === 'contacts') {
       supabase.from('contacts')
         .select('contact_id, profiles!contacts_contact_id_fkey(id, full_name, email, university, course)')
         .eq('user_id', user.id)
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (error) setError('Could not load contacts.');
           setContacts(data?.map((d: any) => d.profiles).filter(Boolean) || []);
           setLoading(false);
         });
     } else if (activeTab === 'teams') {
       supabase.from('team_members').select('team_id, role').eq('user_id', user.id)
-        .then(async ({ data: memberships }) => {
+        .then(async ({ data: memberships, error }) => {
+          if (error) { setError('Could not load teams.'); setLoading(false); return; }
           if (!memberships || memberships.length === 0) { setTeams([]); setLoading(false); return; }
           const teamIds = memberships.map((m: any) => m.team_id);
-          const { data: teamsData } = await supabase.from('teams').select('*').in('id', teamIds);
+          const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*').in('id', teamIds);
+          if (teamsError) { setError('Could not load teams.'); setLoading(false); return; }
           const merged = (teamsData || []).map((t: any) => {
             const m = memberships.find((mm: any) => mm.team_id === t.id);
             return { ...t, myRole: m?.role || 'member' };
@@ -289,13 +292,16 @@ export default function SocialPage() {
           setLoading(false);
         });
     }
-  }, [user, activeTab]);
+  };
+
+  useEffect(() => { loadTab(); }, [user, activeTab]);
 
   const regenerateToken = async () => {
     if (!user) return;
     setRegenerating(true);
     const newToken = crypto.randomUUID();
-    await supabase.from('profiles').update({ qr_token: newToken }).eq('id', user.id);
+    const { error } = await supabase.from('profiles').update({ qr_token: newToken }).eq('id', user.id);
+    if (error) { toast.error('Could not refresh QR code'); setRegenerating(false); return; }
     setProfile((p: any) => ({ ...p, qr_token: newToken }));
     setRegenerating(false);
     toast.success('QR code refreshed');
@@ -306,15 +312,17 @@ export default function SocialPage() {
     setScanning(true);
     const token = raw.includes('rute://add/') ? raw.split('rute://add/')[1] : raw.trim();
     const { data: found } = await supabase.from('profiles').select('id, full_name, email').eq('qr_token', token).single();
-    if (!found) { toast.error('Invalid QR code'); setScanning(false); return; }
+    if (!found) { toast.error('Invalid QR code. Make sure you\'re scanning a Rute code.'); setScanning(false); return; }
     if (found.id === user.id) { toast.error("That's your own QR code"); setScanning(false); return; }
     const { data: existing } = await supabase.from('contacts').select('id').eq('user_id', user.id).eq('contact_id', found.id).maybeSingle();
     if (existing) { toast.error('Already in your contacts'); setScanning(false); return; }
-    await supabase.from('contacts').insert([
+    const { error } = await supabase.from('contacts').insert([
       { user_id: user.id, contact_id: found.id },
       { user_id: found.id, contact_id: user.id },
     ]);
+    if (error) { toast.error('Could not add contact. Please try again.'); setScanning(false); return; }
     toast.success(`Added ${found.full_name || found.email} as a contact`);
+    setContacts(prev => [...prev, found]);
     setScanInput('');
     setScanning(false);
     setShowQR(false);
@@ -325,11 +333,11 @@ export default function SocialPage() {
     setJoining(true);
     const code = raw.includes('rute://team/') ? raw.split('rute://team/')[1] : raw.trim();
     const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('invite_code', code).single();
-    if (!team || teamError) { toast.error('Invalid team code'); setJoining(false); return; }
+    if (!team || teamError) { toast.error('Invalid team code. Check the code and try again.'); setJoining(false); return; }
     const { data: existing } = await supabase.from('team_members').select('team_id').eq('team_id', team.id).eq('user_id', user.id).maybeSingle();
     if (existing) { toast.error('Already in this team'); setJoining(false); return; }
     const { error: insertError } = await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'member' });
-    if (insertError) { toast.error('Could not join team'); setJoining(false); return; }
+    if (insertError) { toast.error('Could not join team. Please try again.'); setJoining(false); return; }
     const { data: conv } = await supabase.from('conversations').select('id').eq('team_id', team.id).maybeSingle();
     if (conv) {
       await supabase.from('conversation_members').insert({ conversation_id: conv.id, user_id: user.id });
@@ -349,8 +357,9 @@ export default function SocialPage() {
       captain_id: user.id, university: profile?.university || null,
       invite_code: inviteCode, invite_token: crypto.randomUUID(),
     }).select().single();
-    if (error) { toast.error('Could not create team: ' + error.message); setCreatingTeam(false); return; }
-    await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'captain' });
+    if (error) { toast.error('Could not create team. Please try again.'); setCreatingTeam(false); return; }
+    const { error: memberError } = await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'captain' });
+    if (memberError) { toast.error('Team created but could not add you as captain.'); }
     const newTeam = { ...team, myRole: 'captain' };
     setTeams(prev => [...prev, newTeam]);
     setTeamName(''); setTeamSport(''); setTeamEmoji('🏆');
@@ -366,7 +375,7 @@ export default function SocialPage() {
     if (conv && !error) {
       await supabase.from('conversation_members').insert({ conversation_id: conv.id, user_id: user.id });
       toast.success(`Group chat created for ${team.name}!`);
-    } else { toast.error('Could not create group chat'); }
+    } else { toast.error('Could not create group chat. You can create it later from the chat page.'); }
     setPendingGroupChatTeam(null);
   };
 
@@ -397,14 +406,15 @@ export default function SocialPage() {
         ))}
       </div>
 
+      {error && <ErrorBanner message={error} onRetry={loadTab} />}
+
       {loading ? (
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}</div>
+        <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}</div>
       ) : (
         <>
           {activeTab === 'contacts' && (
             <div className="space-y-3">
               {user && <IncomingRequests userId={user.id} />}
-
               <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -415,7 +425,6 @@ export default function SocialPage() {
                     <QrCode className="w-3.5 h-3.5" />{showQR ? 'Hide' : 'Show'}
                   </button>
                 </div>
-
                 {showQR && (
                   <div className="text-center pt-2">
                     {qrValue ? (
@@ -433,7 +442,6 @@ export default function SocialPage() {
                     </button>
                   </div>
                 )}
-
                 <div className={cn('space-y-2', showQR && 'mt-4 pt-4 border-t border-border/40')}>
                   <button onClick={() => setShowContactScanner(true)}
                     className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary rounded-xl py-3 text-sm font-semibold hover:bg-primary/20 transition-colors">
@@ -454,7 +462,6 @@ export default function SocialPage() {
                   </div>
                 </div>
               </div>
-
               {contacts.length === 0 ? (
                 <div className="text-center py-8">
                   <UserPlus className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -513,7 +520,6 @@ export default function SocialPage() {
                   <Plus className="w-4 h-4" />Create a team
                 </button>
               )}
-
               <div className="glass-card rounded-2xl p-4">
                 <p className="font-semibold text-sm mb-3">Join a Team</p>
                 <button onClick={() => setShowJoinScanner(true)}
@@ -534,7 +540,6 @@ export default function SocialPage() {
                   </button>
                 </div>
               </div>
-
               {teams.length === 0 ? (
                 <div className="text-center py-8">
                   <Trophy className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
