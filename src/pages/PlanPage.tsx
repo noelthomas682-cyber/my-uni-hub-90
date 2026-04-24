@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format, isPast, isToday, differenceInDays } from 'date-fns';
-import { Calendar, CheckSquare, Target, Plus, Trophy, X } from 'lucide-react';
+import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -51,13 +51,29 @@ function getTaskColours(status: string) {
   }
 }
 
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="glass-card rounded-xl p-4 flex items-center gap-3 border border-red-500/20">
+      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+      <p className="text-xs text-red-400 flex-1">{message}</p>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 text-red-400">
+          <RefreshCw className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function PlanPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SubTab>('schedule');
   const [events, setEvents] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
@@ -75,28 +91,54 @@ export default function PlanPage() {
   const [newEventEnd, setNewEventEnd] = useState('');
   const [newEventLocation, setNewEventLocation] = useState('');
 
-  useEffect(() => {
+  const loadTab = () => {
     if (!user) return;
     setLoading(true);
+    setError(null);
+
     if (activeTab === 'schedule') {
       supabase.from('calendar_events').select('*')
+        .eq('user_id', user.id)
         .gte('start_time', new Date().toISOString())
         .order('start_time').limit(20)
-        .then(({ data }) => { setEvents(data || []); setLoading(false); });
+        .then(({ data, error }) => {
+          if (error) setError('Could not load schedule. Pull to refresh.');
+          setEvents(data || []);
+          setLoading(false);
+        });
     } else if (activeTab === 'tasks') {
-      supabase.from('tasks').select('*')
-        .eq('user_id', user.id)
-        .eq('is_complete', false)
-        .not('due_date', 'is', null)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .then(({ data }) => { setTasks(data || []); setLoading(false); });
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      Promise.all([
+        supabase.from('tasks').select('*')
+          .eq('user_id', user.id)
+          .eq('is_complete', false)
+          .order('due_date', { ascending: true, nullsFirst: false }),
+        supabase.from('tasks').select('*')
+          .eq('user_id', user.id)
+          .eq('is_complete', true)
+          .gte('completed_at', sevenDaysAgo.toISOString())
+          .order('completed_at', { ascending: false }).limit(10),
+      ]).then(([incompleteRes, completedRes]) => {
+        if (incompleteRes.error) setError('Could not load tasks. Pull to refresh.');
+        setTasks(incompleteRes.data || []);
+        setCompletedTasks(completedRes.data || []);
+        setLoading(false);
+      });
     } else {
       supabase.from('goals').select('*')
+        .eq('user_id', user.id)
         .order('is_complete', { ascending: true })
         .order('created_at', { ascending: false }).limit(20)
-        .then(({ data }) => { setGoals((data as Goal[]) || []); setLoading(false); });
+        .then(({ data, error }) => {
+          if (error) setError('Could not load goals. Pull to refresh.');
+          setGoals((data as Goal[]) || []);
+          setLoading(false);
+        });
     }
-  }, [user, activeTab]);
+  };
+
+  useEffect(() => { loadTab(); }, [user, activeTab]);
 
   const addTask = async () => {
     if (!newTaskTitle.trim() || !user) return;
@@ -109,7 +151,7 @@ export default function PlanPage() {
       is_complete: false,
       source: 'manual',
     }).select().single();
-    if (error) { toast.error('Could not create task'); return; }
+    if (error) { toast.error('Could not create task. Please try again.'); return; }
     setTasks(prev => [data, ...prev]);
     setNewTaskTitle(''); setNewTaskDue(''); setNewTaskPriority('normal'); setNewTaskCourse('');
     setShowAddTask(false);
@@ -127,7 +169,7 @@ export default function PlanPage() {
       event_type: 'personal',
       source: 'manual',
     }).select().single();
-    if (error) { toast.error('Could not create event'); return; }
+    if (error) { toast.error('Could not create event. Please try again.'); return; }
     setEvents(prev => [...prev, data].sort((a, b) =>
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     ));
@@ -144,7 +186,7 @@ export default function PlanPage() {
       period_days: parseInt(newGoalPeriod) || 30,
       start_date: new Date().toISOString().split('T')[0],
     }).select().single();
-    if (error) { toast.error('Could not create goal'); return; }
+    if (error) { toast.error('Could not create goal. Please try again.'); return; }
     setGoals(prev => [data as Goal, ...prev]);
     setNewGoalTitle(''); setNewGoalPeriod('30'); setShowAddGoal(false);
     toast.success('Goal added');
@@ -152,21 +194,38 @@ export default function PlanPage() {
 
   const toggleGoal = async (goal: Goal) => {
     const isComplete = !goal.is_complete;
-    await supabase.from('goals').update({
+    const { error } = await supabase.from('goals').update({
       is_complete: isComplete,
       completed_at: isComplete ? new Date().toISOString() : null,
     }).eq('id', goal.id);
+    if (error) { toast.error('Could not update goal'); return; }
     setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
     if (isComplete) toast.success(`🎉 Goal completed: ${goal.title}`);
   };
 
   const toggleTask = async (id: string, isComplete: boolean) => {
-    await supabase.from('tasks').update({
+    const { error } = await supabase.from('tasks').update({
       is_complete: !isComplete,
       completed_at: !isComplete ? new Date().toISOString() : null,
     }).eq('id', id);
-    setTasks(prev => prev.filter(t => t.id !== id));
-    toast.success(!isComplete ? 'Task completed ✓' : 'Task reopened');
+    if (error) { toast.error('Could not update task'); return; }
+    if (!isComplete) {
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        setTasks(prev => prev.filter(t => t.id !== id));
+        setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
+        toast.success('Task completed ✓');
+      }
+    } else {
+      const task = completedTasks.find(t => t.id === id);
+      if (task) {
+        setCompletedTasks(prev => prev.filter(t => t.id !== id));
+        setTasks(prev => [...prev, { ...task, is_complete: false }].sort((a, b) =>
+          new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime()
+        ));
+        toast.success('Task reopened');
+      }
+    }
   };
 
   const tabs = [
@@ -183,12 +242,13 @@ export default function PlanPage() {
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             className={cn("flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all",
-              activeTab === tab.key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-            )}>
+              activeTab === tab.key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
             <tab.icon className="w-3.5 h-3.5" />{tab.label}
           </button>
         ))}
       </div>
+
+      {error && <ErrorBanner message={error} onRetry={loadTab} />}
 
       {loading ? (
         <div className="space-y-3">
@@ -294,33 +354,50 @@ export default function PlanPage() {
                   <Plus className="w-4 h-4" />New task
                 </button>
               )}
-              {tasks.length === 0 ? (
+
+              {tasks.length === 0 && completedTasks.length === 0 ? (
                 <p className="text-muted-foreground text-sm text-center py-10">All caught up!</p>
-              ) : tasks.map(t => {
-                const status = t.due_date ? getTaskStatus(t.due_date) : 'upcoming';
-                const label = t.due_date ? getTaskLabel(t.due_date) : null;
-                const colours = getTaskColours(status);
-                return (
-                  <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                    className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
-                    <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0",
-                      t.is_complete ? "bg-primary border-primary" : "border-muted-foreground")}>
-                      {t.is_complete && <CheckSquare className="w-3 h-3 text-primary-foreground" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{t.title}</p>
-                      {t.course_code && (
-                        <p className="text-xs text-muted-foreground">{t.course_code}</p>
-                      )}
-                    </div>
-                    {label && (
-                      <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
-                        {label}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              ) : (
+                <>
+                  {tasks.map(t => {
+                    const status = t.due_date ? getTaskStatus(t.due_date) : 'upcoming';
+                    const label = t.due_date ? getTaskLabel(t.due_date) : null;
+                    const colours = getTaskColours(status);
+                    return (
+                      <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
+                        className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
+                        <div className={cn("w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0", "border-muted-foreground")} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{t.title}</p>
+                          {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
+                        </div>
+                        {label && (
+                          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
+                            {label}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  {completedTasks.length > 0 && (
+                    <>
+                      <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
+                      {completedTasks.map(t => (
+                        <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
+                          className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left opacity-50">
+                          <div className="w-5 h-5 rounded-md border-2 bg-primary border-primary flex items-center justify-center shrink-0">
+                            <CheckSquare className="w-3 h-3 text-primary-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate line-through text-muted-foreground">{t.title}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -387,10 +464,7 @@ export default function PlanPage() {
                   <div className="flex items-center justify-end">
                     <button onClick={() => toggleGoal(goal)}
                       className={cn("px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors",
-                        goal.is_complete
-                          ? "bg-secondary text-muted-foreground"
-                          : "bg-primary/20 text-primary hover:bg-primary/30"
-                      )}>
+                        goal.is_complete ? "bg-secondary text-muted-foreground" : "bg-primary/20 text-primary hover:bg-primary/30")}>
                       {goal.is_complete ? 'Completed ✓' : 'Mark complete'}
                     </button>
                   </div>

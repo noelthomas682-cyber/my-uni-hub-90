@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { Moon, Plus, Bell, MessageCircle, Zap, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Moon, Plus, Bell, MessageCircle, Zap, AlertTriangle, RefreshCw, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CalendarEvent {
@@ -107,6 +107,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [teams, setTeams] = useState<any[]>([]);
   const [sleepSchedule, setSleepSchedule] = useState<any>(null);
@@ -149,6 +150,7 @@ export default function HomePage() {
         setLoading(false);
       });
 
+    // Load incomplete tasks
     supabase.from('tasks').select('*')
       .eq('user_id', user.id)
       .eq('is_complete', false)
@@ -158,6 +160,16 @@ export default function HomePage() {
         if (error) setErrors(e => ({ ...e, tasks: 'Could not load tasks' }));
         setTasks(data || []);
       });
+
+    // Load recently completed tasks (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    supabase.from('tasks').select('*')
+      .eq('user_id', user.id)
+      .eq('is_complete', true)
+      .gte('completed_at', sevenDaysAgo.toISOString())
+      .order('completed_at', { ascending: false }).limit(5)
+      .then(({ data }) => { setCompletedTasks(data || []); });
 
     supabase.from('team_members')
       .select('team_id, role')
@@ -178,13 +190,27 @@ export default function HomePage() {
   useEffect(() => { loadData(); }, [user]);
 
   const toggleTaskComplete = async (task: Task) => {
-    const { error } = await supabase.from('tasks').update({
-      is_complete: true,
-      completed_at: new Date().toISOString(),
-    }).eq('id', task.id);
-    if (error) { toast.error('Could not update task'); return; }
-    setTasks(prev => prev.filter(t => t.id !== task.id));
-    toast.success('Task completed ✓');
+    if (!task.is_complete) {
+      const { error } = await supabase.from('tasks').update({
+        is_complete: true,
+        completed_at: new Date().toISOString(),
+      }).eq('id', task.id);
+      if (error) { toast.error('Could not update task'); return; }
+      setTasks(prev => prev.filter(t => t.id !== task.id));
+      setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
+      toast.success('Task completed ✓');
+    } else {
+      const { error } = await supabase.from('tasks').update({
+        is_complete: false,
+        completed_at: null,
+      }).eq('id', task.id);
+      if (error) { toast.error('Could not update task'); return; }
+      setCompletedTasks(prev => prev.filter(t => t.id !== task.id));
+      setTasks(prev => [...prev, { ...task, is_complete: false }].sort((a, b) =>
+        new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime()
+      ));
+      toast.success('Task reopened');
+    }
   };
 
   const streak = profile?.streak_count || 0;
@@ -350,13 +376,15 @@ export default function HomePage() {
             <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Tasks & Deadlines</p>
             <Link to="/plan" className="text-[10px] text-white/30 hover:text-primary transition-colors">See all →</Link>
           </div>
-          {tasks.length === 0 ? (
+
+          {tasks.length === 0 && completedTasks.length === 0 ? (
             <div className="glass-card rounded-2xl p-5 text-center">
               <p className="font-heading font-bold text-sm mb-1">No tasks yet</p>
               <p className="text-muted-foreground text-xs">Sync your LMS or add tasks manually</p>
             </div>
           ) : (
             <div className="space-y-1.5">
+              {/* Incomplete tasks */}
               {tasks.map((task) => {
                 const status = getTaskStatus(task.due_date!);
                 const label = getTaskLabel(task.due_date!);
@@ -364,7 +392,7 @@ export default function HomePage() {
                 return (
                   <button key={task.id} onClick={() => toggleTaskComplete(task)}
                     className="flex items-center gap-3 glass-card rounded-xl px-3 py-3 w-full text-left hover:bg-white/5 transition-colors">
-                    <div className={cn('w-2 h-2 rounded-full shrink-0', colours.dot)} />
+                    <div className={cn('w-4 h-4 rounded-md border-2 border-white/20 shrink-0')} />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm text-white leading-tight truncate">{task.title}</p>
                     </div>
@@ -374,6 +402,27 @@ export default function HomePage() {
                   </button>
                 );
               })}
+
+              {/* Completed tasks */}
+              {completedTasks.length > 0 && (
+                <>
+                  <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
+                  {completedTasks.map((task) => (
+                    <button key={task.id} onClick={() => toggleTaskComplete(task)}
+                      className="flex items-center gap-3 glass-card rounded-xl px-3 py-3 w-full text-left opacity-50 hover:opacity-70 transition-opacity">
+                      <div className="w-4 h-4 rounded-md bg-primary border-2 border-primary flex items-center justify-center shrink-0">
+                        <CheckSquare className="w-2.5 h-2.5 text-primary-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-white leading-tight truncate line-through">
+                          {task.title}
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-white/30">Done</span>
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
