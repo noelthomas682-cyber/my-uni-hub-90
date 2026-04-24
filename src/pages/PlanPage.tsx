@@ -29,6 +29,10 @@ function cleanTitle(title: string): string {
     .replace(/^Assignment:\s*/i, '')
     .replace(/^Quiz:\s*/i, '')
     .replace(/^Test:\s*/i, '')
+    // Remove leading "COURSECODE: COURSECODE - " duplicate pattern e.g. "LW111-4-SP: LW111-4-SP - Title"
+    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
+    // Remove leading "COURSECODE: " prefix e.g. "LW111-4-SP: Title"
+    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
     .trim();
 }
 
@@ -86,6 +90,7 @@ export default function PlanPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showOldOverdue, setShowOldOverdue] = useState(false);
 
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
@@ -248,13 +253,19 @@ export default function PlanPage() {
 
   // Split incomplete tasks into dated and undated
   // On plan page show ALL tasks including old overdue (unlike home which hides >14 days)
-  const datedTasks = tasks.filter(t => t.due_date);
+  const datedTasks = tasks.filter(t => t.due_date && (
+    !isPast(new Date(t.due_date)) ||
+    isToday(new Date(t.due_date)) ||
+    differenceInDays(new Date(), new Date(t.due_date)) <= 14
+  ));
+  const oldOverdueTasks = tasks.filter(t => 
+    t.due_date &&
+    isPast(new Date(t.due_date)) &&
+    !isToday(new Date(t.due_date)) &&
+    differenceInDays(new Date(), new Date(t.due_date)) > 14
+  );
   const undatedTasks = tasks.filter(t => !t.due_date);
-  const hiddenOldCount = tasks.filter(t => {
-    if (!t.due_date) return false;
-    const due = new Date(t.due_date);
-    return isPast(due) && !isToday(due) && differenceInDays(new Date(), due) > 14;
-  }).length;
+  const hiddenOldCount = oldOverdueTasks.length;
 
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
@@ -401,11 +412,34 @@ export default function PlanPage() {
                     );
                   })}
 
-                  {/* Hidden old tasks note */}
-                  {hiddenOldCount > 0 && (
-                    <p className="text-[10px] text-white/20 text-center py-1">
-                      + {hiddenOldCount} task{hiddenOldCount !== 1 ? 's' : ''} hidden from home (overdue &gt;14 days) — visible here
-                    </p>
+                  {/* Old overdue — collapsed by default */}
+                  {oldOverdueTasks.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => setShowOldOverdue(prev => !prev)}
+                        className="w-full flex items-center justify-between pt-2 pb-1">
+                        <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold">
+                          Old overdue ({oldOverdueTasks.length})
+                        </p>
+                        <span className="text-[10px] text-white/20">{showOldOverdue ? '▲ hide' : '▶ show'}</span>
+                      </button>
+                      {showOldOverdue && oldOverdueTasks.map(t => {
+                        const label = getTaskLabel(t.due_date);
+                        return (
+                          <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
+                            className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left opacity-60">
+                            <div className="w-5 h-5 rounded-md border-2 border-red-500/40 flex items-center justify-center shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate text-white/60">{cleanTitle(t.title)}</p>
+                              {t.course_code && <p className="text-xs text-muted-foreground/60">{t.course_code}</p>}
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 bg-red-500/10 text-red-400/60">
+                              {label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </>
                   )}
 
                   {/* Someday — tasks with no due date */}

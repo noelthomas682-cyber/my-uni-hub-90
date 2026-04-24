@@ -66,6 +66,10 @@ function cleanTitle(title: string): string {
     .replace(/^Assignment:\s*/i, '')
     .replace(/^Quiz:\s*/i, '')
     .replace(/^Test:\s*/i, '')
+    // Remove leading "COURSECODE: COURSECODE - " duplicate pattern e.g. "LW111-4-SP: LW111-4-SP - Title"
+    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
+    // Remove leading "COURSECODE: " prefix e.g. "LW111-4-SP: Title"
+    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
     .trim();
 }
 
