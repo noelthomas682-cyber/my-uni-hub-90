@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Moon, Zap, ExternalLink, RefreshCw, CheckCircle2, ArrowRight, Calendar, BookOpen } from 'lucide-react';
+import { Moon, Zap, ExternalLink, RefreshCw, CheckCircle2, ArrowRight, Calendar, BookOpen, XCircle } from 'lucide-react';
 
 const ACTIVITIES = [
   'Gym', 'Running', 'Soccer', 'Basketball', 'Swimming',
@@ -16,52 +16,92 @@ const UNI_REGISTRY: Record<string, { name: string; lms: string; lmsPortalUrl: st
   'essex.ac.uk': {
     name: 'University of Essex', lms: 'Moodle',
     lmsPortalUrl: 'https://moodle.essex.ac.uk/calendar/export.php',
-    lmsSteps: ['Open Essex Moodle Calendar', 'Select "All events" → Custom range', 'Click "Get calendar URL" and copy it'],
+    lmsSteps: [
+      'Open Essex Moodle → Calendar → Export calendar',
+      'Set "All events" · Date range: today → 1 year ahead',
+      'Click "Get calendar URL" and copy the link',
+    ],
   },
   'manchester.ac.uk': {
     name: 'University of Manchester', lms: 'Blackboard',
     lmsPortalUrl: 'https://online.manchester.ac.uk',
-    lmsSteps: ['Open Manchester Blackboard', 'Go to My Blackboard → Calendar', 'Click "Get Calendar Feed" and copy the URL'],
+    lmsSteps: [
+      'Open Manchester Blackboard',
+      'Go to My Blackboard → Calendar',
+      'Click "Get Calendar Feed" and copy the URL',
+    ],
   },
   'ucl.ac.uk': {
     name: 'University College London', lms: 'Moodle',
     lmsPortalUrl: 'https://moodle.ucl.ac.uk/calendar/export.php',
-    lmsSteps: ['Open UCL Moodle', 'Select "All events" → "Get calendar URL"', 'Copy the URL'],
+    lmsSteps: [
+      'Open UCL Moodle → Calendar → Export calendar',
+      'Set "All events" · Date range: today → 1 year ahead',
+      'Click "Get calendar URL" and copy the link',
+    ],
   },
   'kcl.ac.uk': {
     name: "King's College London", lms: 'Canvas',
     lmsPortalUrl: 'https://kcl.instructure.com/profile/settings',
-    lmsSteps: ['Open KCL Canvas settings', 'Scroll to "Other Feeds" → "Calendar Feed"', 'Copy the URL'],
+    lmsSteps: [
+      'Open KCL Canvas settings',
+      'Scroll to "Other Feeds" → "Calendar Feed"',
+      'Copy the URL',
+    ],
   },
   'imperial.ac.uk': {
     name: 'Imperial College London', lms: 'Blackboard',
     lmsPortalUrl: 'https://bb.imperial.ac.uk',
-    lmsSteps: ['Open Imperial Blackboard', 'Go to Calendar → Get Calendar Feed', 'Copy the URL'],
+    lmsSteps: [
+      'Open Imperial Blackboard',
+      'Go to Calendar → Get Calendar Feed',
+      'Copy the URL',
+    ],
   },
   'ox.ac.uk': {
     name: 'University of Oxford', lms: 'Canvas',
     lmsPortalUrl: 'https://canvas.ox.ac.uk/profile/settings',
-    lmsSteps: ['Open Oxford Canvas', 'Scroll to "Other Feeds" → "Calendar Feed"', 'Copy the URL'],
+    lmsSteps: [
+      'Open Oxford Canvas settings',
+      'Scroll to "Other Feeds" → "Calendar Feed"',
+      'Copy the URL',
+    ],
   },
   'cam.ac.uk': {
     name: 'University of Cambridge', lms: 'Moodle',
     lmsPortalUrl: 'https://www.vle.cam.ac.uk/calendar/export.php',
-    lmsSteps: ['Open Cambridge Moodle', 'Select "All events" → "Get calendar URL"', 'Copy the URL'],
+    lmsSteps: [
+      'Open Cambridge Moodle → Calendar → Export calendar',
+      'Set "All events" · Date range: today → 1 year ahead',
+      'Click "Get calendar URL" and copy the link',
+    ],
   },
   'ed.ac.uk': {
     name: 'University of Edinburgh', lms: 'Blackboard',
     lmsPortalUrl: 'https://learn.ed.ac.uk',
-    lmsSteps: ['Open Edinburgh Learn', 'Go to Calendar → Get Calendar Feed', 'Copy the URL'],
+    lmsSteps: [
+      'Open Edinburgh Learn',
+      'Go to Calendar → Get Calendar Feed',
+      'Copy the URL',
+    ],
   },
   'birmingham.ac.uk': {
     name: 'University of Birmingham', lms: 'Canvas',
     lmsPortalUrl: 'https://canvas.bham.ac.uk/profile/settings',
-    lmsSteps: ['Open Birmingham Canvas', 'Scroll to "Calendar Feed"', 'Copy the URL'],
+    lmsSteps: [
+      'Open Birmingham Canvas settings',
+      'Scroll to "Calendar Feed"',
+      'Copy the URL',
+    ],
   },
   'leeds.ac.uk': {
     name: 'University of Leeds', lms: 'Blackboard',
     lmsPortalUrl: 'https://minerva.leeds.ac.uk',
-    lmsSteps: ['Open Leeds Minerva', 'Go to Calendar → Get Calendar Feed', 'Copy the URL'],
+    lmsSteps: [
+      'Open Leeds Minerva',
+      'Go to Calendar → Get Calendar Feed',
+      'Copy the URL',
+    ],
   },
 };
 
@@ -77,11 +117,18 @@ function detectUni(email: string) {
     return {
       name: domain, lms: 'Calendar', domain,
       lmsPortalUrl: 'https://outlook.office365.com/calendar/view/month',
-      lmsSteps: ['Open your university LMS', 'Find Calendar → Export or Share → ICS link', 'Copy the URL'],
+      lmsSteps: [
+        'Open your university LMS → Calendar',
+        'Find Export or Share → ICS / Calendar Feed link',
+        'Set date range to today → 1 year ahead if available',
+        'Copy the URL',
+      ],
     };
   }
   return null;
 }
+
+type ImportStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export default function Onboarding() {
   const { user, loading } = useAuth();
@@ -97,14 +144,17 @@ export default function Onboarding() {
 
   const [scheduleUrl, setScheduleUrl] = useState('');
   const [assignmentsUrl, setAssignmentsUrl] = useState('');
-  const [importingSchedule, setImportingSchedule] = useState(false);
-  const [importingAssignments, setImportingAssignments] = useState(false);
-  const [importedSchedule, setImportedSchedule] = useState(false);
-  const [importedAssignments, setImportedAssignments] = useState(false);
+  const [scheduleStatus, setScheduleStatus] = useState<ImportStatus>('idle');
+  const [assignmentsStatus, setAssignmentsStatus] = useState<ImportStatus>('idle');
+  const [scheduleCount, setScheduleCount] = useState<number | null>(null);
+  const [assignmentsCount, setAssignmentsCount] = useState<number | null>(null);
 
   const [sleepTime, setSleepTime] = useState('23:00');
   const [wakeTime, setWakeTime] = useState('07:00');
   const [selectedActivities, setSelectedActivities] = useState<string[]>([]);
+
+  const importedSchedule = scheduleStatus === 'success';
+  const importedAssignments = assignmentsStatus === 'success';
 
   useEffect(() => {
     if (loading) return;
@@ -127,31 +177,43 @@ export default function Onboarding() {
 
   const importUrl = async (url: string, type: 'schedule' | 'assignments') => {
     if (!url.trim() || !user) return;
-    if (type === 'schedule') setImportingSchedule(true);
-    else setImportingAssignments(true);
+
+    if (type === 'schedule') setScheduleStatus('loading');
+    else setAssignmentsStatus('loading');
 
     try {
-      await supabase.functions.invoke('fetch-ics', {
+      const { data, error } = await supabase.functions.invoke('fetch-ics', {
         body: { url: url.trim(), userId: user.id }
       });
+
+      if (error) throw new Error(error.message);
+
+      const count = type === 'schedule'
+        ? (data?.events ?? 0)
+        : (data?.tasks ?? 0);
+
+      const domain = detected?.domain || getDomain(user.email || '');
+      await supabase.from('lms_connections').upsert({
+        user_id: user.id,
+        email_domain: domain,
+        lms_type: 'ics',
+        lms_name: detected?.name || 'Calendar Sync',
+        base_url: url.trim(),
+        auth_method: 'none',
+        is_connected: true,
+      }, { onConflict: 'user_id' });
+
+      if (type === 'schedule') {
+        setScheduleStatus('success');
+        setScheduleCount(count);
+      } else {
+        setAssignmentsStatus('success');
+        setAssignmentsCount(count);
+      }
     } catch (err) {
-      console.error('ICS import error:', err);
+      if (type === 'schedule') setScheduleStatus('error');
+      else setAssignmentsStatus('error');
     }
-
-    const domain = detected?.domain || getDomain(user.email || '');
-    const baseUrl = type === 'assignments' ? url.trim() : (assignmentsUrl.trim() || url.trim());
-    await supabase.from('lms_connections').upsert({
-      user_id: user.id,
-      email_domain: domain,
-      lms_type: 'ics',
-      lms_name: detected?.name || 'Calendar Sync',
-      base_url: baseUrl,
-      auth_method: 'none',
-      is_connected: true,
-    }, { onConflict: 'user_id' });
-
-    if (type === 'schedule') { setImportedSchedule(true); setImportingSchedule(false); }
-    else { setImportedAssignments(true); setImportingAssignments(false); }
   };
 
   const handleContinueFromCalendars = async () => {
@@ -222,6 +284,7 @@ export default function Onboarding() {
           ))}
         </div>
 
+        {/* ── STEP 1 ── */}
         {step === 1 && (
           <div className="space-y-6">
             <div className="text-center">
@@ -245,15 +308,17 @@ export default function Onboarding() {
           </div>
         )}
 
+        {/* ── STEP 2 ── */}
         {step === 2 && (
           <div className="space-y-4">
             <div className="text-center">
               <h1 className="text-2xl font-bold">Sync Your University</h1>
               <p className="text-muted-foreground mt-2 text-sm">
-                Connect your timetable and assignments — add either or both, both are optional
+                Connect your timetable and assignments — both are optional
               </p>
             </div>
 
+            {/* Schedule */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -263,9 +328,25 @@ export default function Onboarding() {
                   <p className="font-semibold text-sm">Schedule / Timetable</p>
                   <p className="text-xs text-muted-foreground">Lectures, classes and seminars</p>
                 </div>
-                {importedSchedule && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
+                {scheduleStatus === 'success' && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
+                {scheduleStatus === 'error' && <XCircle className="w-5 h-5 text-red-400 shrink-0" />}
               </div>
-              {!importedSchedule && (
+
+              {scheduleStatus === 'success' && (
+                <div className="bg-primary/10 rounded-xl px-3 py-2">
+                  <p className="text-xs text-primary font-medium">
+                    ✓ Synced {scheduleCount !== null ? `${scheduleCount} event${scheduleCount !== 1 ? 's' : ''}` : 'successfully'}
+                  </p>
+                </div>
+              )}
+
+              {scheduleStatus === 'error' && (
+                <div className="bg-red-500/10 rounded-xl px-3 py-2">
+                  <p className="text-xs text-red-400">Could not import — check the URL and try again</p>
+                </div>
+              )}
+
+              {scheduleStatus !== 'success' && (
                 <>
                   <button onClick={() => window.open('https://outlook.office365.com/calendar/view/month', '_blank')}
                     className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
@@ -279,15 +360,16 @@ export default function Onboarding() {
                       placeholder="Paste Outlook ICS URL..."
                       className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
                     <button onClick={() => importUrl(scheduleUrl, 'schedule')}
-                      disabled={!scheduleUrl.trim() || importingSchedule}
+                      disabled={!scheduleUrl.trim() || scheduleStatus === 'loading'}
                       className="px-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center">
-                      {importingSchedule ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                      {scheduleStatus === 'loading' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                     </button>
                   </div>
                 </>
               )}
             </div>
 
+            {/* Assignments */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -297,9 +379,25 @@ export default function Onboarding() {
                   <p className="font-semibold text-sm">Assignments / Tasks</p>
                   <p className="text-xs text-muted-foreground">Deadlines, quizzes and coursework</p>
                 </div>
-                {importedAssignments && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
+                {assignmentsStatus === 'success' && <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />}
+                {assignmentsStatus === 'error' && <XCircle className="w-5 h-5 text-red-400 shrink-0" />}
               </div>
-              {!importedAssignments && (
+
+              {assignmentsStatus === 'success' && (
+                <div className="bg-primary/10 rounded-xl px-3 py-2">
+                  <p className="text-xs text-primary font-medium">
+                    ✓ Synced {assignmentsCount !== null ? `${assignmentsCount} task${assignmentsCount !== 1 ? 's' : ''}` : 'successfully'}
+                  </p>
+                </div>
+              )}
+
+              {assignmentsStatus === 'error' && (
+                <div className="bg-red-500/10 rounded-xl px-3 py-2">
+                  <p className="text-xs text-red-400">Could not import — check the URL and try again</p>
+                </div>
+              )}
+
+              {assignmentsStatus !== 'success' && (
                 <>
                   {detected?.lmsPortalUrl && (
                     <button onClick={() => window.open(detected.lmsPortalUrl, '_blank')}
@@ -307,17 +405,22 @@ export default function Onboarding() {
                       <ExternalLink className="w-3.5 h-3.5" />Open {detected.lms || 'University LMS'}
                     </button>
                   )}
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    {detected?.lmsSteps?.join(' → ') || 'Open your LMS → Calendar → Export → Copy ICS URL'}
-                  </p>
+                  <div className="space-y-1">
+                    {(detected?.lmsSteps || ['Open your LMS → Calendar → Export → Copy ICS URL']).map((step: string, i: number) => (
+                      <p key={i} className="text-[10px] text-muted-foreground leading-relaxed flex gap-1.5">
+                        <span className="text-primary/50 font-bold shrink-0">{i + 1}.</span>
+                        {step}
+                      </p>
+                    ))}
+                  </div>
                   <div className="flex gap-2">
                     <input type="text" value={assignmentsUrl} onChange={e => setAssignmentsUrl(e.target.value)}
                       placeholder="Paste LMS calendar URL..."
                       className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
                     <button onClick={() => importUrl(assignmentsUrl, 'assignments')}
-                      disabled={!assignmentsUrl.trim() || importingAssignments}
+                      disabled={!assignmentsUrl.trim() || assignmentsStatus === 'loading'}
                       className="px-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center">
-                      {importingAssignments ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                      {assignmentsStatus === 'loading' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
                     </button>
                   </div>
                 </>
@@ -333,6 +436,7 @@ export default function Onboarding() {
           </div>
         )}
 
+        {/* ── STEP 3 ── */}
         {step === 3 && (
           <div className="space-y-6">
             <div className="text-center">
