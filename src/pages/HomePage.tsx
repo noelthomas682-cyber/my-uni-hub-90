@@ -57,7 +57,6 @@ const ACTIVITY_EMOJIS: Record<string, string> = {
   'Dancing': '💃', 'Art': '🎨', 'Meditation': '🧠',
 };
 
-// Clean up ugly LMS-generated task titles
 function cleanTitle(title: string): string {
   return title
     .replace(/^Electronic Deadline:\s*/i, '')
@@ -66,9 +65,7 @@ function cleanTitle(title: string): string {
     .replace(/^Assignment:\s*/i, '')
     .replace(/^Quiz:\s*/i, '')
     .replace(/^Test:\s*/i, '')
-    // Remove leading "COURSECODE: COURSECODE - " duplicate pattern e.g. "LW111-4-SP: LW111-4-SP - Title"
     .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
-    // Remove leading "COURSECODE: " prefix e.g. "LW111-4-SP: Title"
     .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
     .trim();
 }
@@ -131,6 +128,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [nightMode, setNightMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [lmsConnected, setLmsConnected] = useState<boolean | null>(null);
   const today = new Date();
 
   const loadData = () => {
@@ -154,6 +152,13 @@ export default function HomePage() {
       .select('sleep_time, wake_time')
       .eq('user_id', user.id).single()
       .then(({ data }) => { if (data) setSleepSchedule(data); });
+
+    supabase.from('lms_connections')
+      .select('is_connected')
+      .eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => {
+        setLmsConnected(data?.is_connected === true);
+      });
 
     supabase.from('calendar_events').select('*')
       .eq('user_id', user.id)
@@ -236,7 +241,6 @@ export default function HomePage() {
   const freeHours = Math.floor(freeMinutes / 60);
   const freeMin = Math.round(freeMinutes % 60);
 
-  // Hide tasks overdue by more than 14 days on home screen
   const visibleTasks = tasks.filter(t => {
     if (!t.due_date) return true;
     const due = new Date(t.due_date);
@@ -248,9 +252,10 @@ export default function HomePage() {
 
   const todayDeadlines = visibleTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
   const overdueTasks = visibleTasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
-
-  // Count hidden tasks for the bell indicator (use all tasks not just visible)
   const allOverdue = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
+
+  // Only show LMS prompt if not connected and no events today
+  const showLmsPrompt = lmsConnected === false && !loading && events.length === 0;
 
   return (
     <div className="pb-28 animate-fade-in bg-background min-h-screen">
@@ -396,6 +401,16 @@ export default function HomePage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ── LMS Connect Prompt — only if not connected ── */}
+        {showLmsPrompt && (
+          <button onClick={() => navigate('/lms-settings')}
+            className="w-full rounded-2xl p-4 border border-primary/20 text-left"
+            style={{ background: 'linear-gradient(135deg, hsl(260 30% 8%) 0%, hsl(280 25% 10%) 100%)' }}>
+            <p className="font-bold text-sm text-white">Connect your university 📅</p>
+            <p className="text-xs text-white/40 mt-1">Sync your timetable and deadlines from your LMS →</p>
+          </button>
         )}
 
         {/* ── Tasks ── */}
