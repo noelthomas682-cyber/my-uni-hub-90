@@ -20,6 +20,18 @@ interface Goal {
   created_at: string;
 }
 
+// Clean up ugly LMS-generated task titles
+function cleanTitle(title: string): string {
+  return title
+    .replace(/^Electronic Deadline:\s*/i, '')
+    .replace(/^Electronic Submission:\s*/i, '')
+    .replace(/^Submission:\s*/i, '')
+    .replace(/^Assignment:\s*/i, '')
+    .replace(/^Quiz:\s*/i, '')
+    .replace(/^Test:\s*/i, '')
+    .trim();
+}
+
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);
   const now = new Date();
@@ -235,8 +247,14 @@ export default function PlanPage() {
   ];
 
   // Split incomplete tasks into dated and undated
+  // On plan page show ALL tasks including old overdue (unlike home which hides >14 days)
   const datedTasks = tasks.filter(t => t.due_date);
   const undatedTasks = tasks.filter(t => !t.due_date);
+  const hiddenOldCount = tasks.filter(t => {
+    if (!t.due_date) return false;
+    const due = new Date(t.due_date);
+    return isPast(due) && !isToday(due) && differenceInDays(new Date(), due) > 14;
+  }).length;
 
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
@@ -373,7 +391,7 @@ export default function PlanPage() {
                         className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
                         <div className="w-5 h-5 rounded-md border-2 border-muted-foreground flex items-center justify-center shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{t.title}</p>
+                          <p className="font-medium text-sm truncate">{cleanTitle(t.title)}</p>
                           {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
                         </div>
                         <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
@@ -382,6 +400,13 @@ export default function PlanPage() {
                       </button>
                     );
                   })}
+
+                  {/* Hidden old tasks note */}
+                  {hiddenOldCount > 0 && (
+                    <p className="text-[10px] text-white/20 text-center py-1">
+                      + {hiddenOldCount} task{hiddenOldCount !== 1 ? 's' : ''} hidden from home (overdue &gt;14 days) — visible here
+                    </p>
+                  )}
 
                   {/* Someday — tasks with no due date */}
                   {undatedTasks.length > 0 && (
@@ -392,7 +417,7 @@ export default function PlanPage() {
                           className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
                           <div className="w-5 h-5 rounded-md border-2 border-muted-foreground/40 flex items-center justify-center shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate text-muted-foreground">{t.title}</p>
+                            <p className="font-medium text-sm truncate text-muted-foreground">{cleanTitle(t.title)}</p>
                             {t.course_code && <p className="text-xs text-muted-foreground/60">{t.course_code}</p>}
                           </div>
                           <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 bg-white/5 text-white/30">
@@ -414,7 +439,7 @@ export default function PlanPage() {
                             <CheckSquare className="w-3 h-3 text-primary-foreground" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate line-through text-muted-foreground">{t.title}</p>
+                            <p className="font-medium text-sm truncate line-through text-muted-foreground">{cleanTitle(t.title)}</p>
                           </div>
                         </button>
                       ))}

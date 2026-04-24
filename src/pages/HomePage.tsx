@@ -57,6 +57,18 @@ const ACTIVITY_EMOJIS: Record<string, string> = {
   'Dancing': '💃', 'Art': '🎨', 'Meditation': '🧠',
 };
 
+// Clean up ugly LMS-generated task titles
+function cleanTitle(title: string): string {
+  return title
+    .replace(/^Electronic Deadline:\s*/i, '')
+    .replace(/^Electronic Submission:\s*/i, '')
+    .replace(/^Submission:\s*/i, '')
+    .replace(/^Assignment:\s*/i, '')
+    .replace(/^Quiz:\s*/i, '')
+    .replace(/^Test:\s*/i, '')
+    .trim();
+}
+
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);
   const now = new Date();
@@ -150,18 +162,16 @@ export default function HomePage() {
         setLoading(false);
       });
 
-    // Load incomplete tasks
     supabase.from('tasks').select('*')
       .eq('user_id', user.id)
       .eq('is_complete', false)
       .not('due_date', 'is', null)
-      .order('due_date').limit(20)
+      .order('due_date').limit(50)
       .then(({ data, error }) => {
         if (error) setErrors(e => ({ ...e, tasks: 'Could not load tasks' }));
         setTasks(data || []);
       });
 
-    // Load recently completed tasks (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     supabase.from('tasks').select('*')
@@ -221,8 +231,22 @@ export default function HomePage() {
   const freeMinutes = Math.max(0, 16 * 60 - totalClassMinutes);
   const freeHours = Math.floor(freeMinutes / 60);
   const freeMin = Math.round(freeMinutes % 60);
-  const todayDeadlines = tasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
-  const overdueTasks = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
+
+  // Hide tasks overdue by more than 14 days on home screen
+  const visibleTasks = tasks.filter(t => {
+    if (!t.due_date) return true;
+    const due = new Date(t.due_date);
+    if (isPast(due) && !isToday(due)) {
+      return differenceInDays(new Date(), due) <= 14;
+    }
+    return true;
+  });
+
+  const todayDeadlines = visibleTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
+  const overdueTasks = visibleTasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
+
+  // Count hidden tasks for the bell indicator (use all tasks not just visible)
+  const allOverdue = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
 
   return (
     <div className="pb-28 animate-fade-in bg-background min-h-screen">
@@ -245,7 +269,7 @@ export default function HomePage() {
           <button onClick={() => toast('No new notifications')}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
             <Bell className="w-4 h-4 text-foreground" />
-            {(todayDeadlines.length > 0 || overdueTasks.length > 0) && (
+            {(todayDeadlines.length > 0 || allOverdue.length > 0) && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
             )}
           </button>
@@ -377,15 +401,14 @@ export default function HomePage() {
             <Link to="/plan" className="text-[10px] text-white/30 hover:text-primary transition-colors">See all →</Link>
           </div>
 
-          {tasks.length === 0 && completedTasks.length === 0 ? (
+          {visibleTasks.length === 0 && completedTasks.length === 0 ? (
             <div className="glass-card rounded-2xl p-5 text-center">
               <p className="font-heading font-bold text-sm mb-1">No tasks yet</p>
               <p className="text-muted-foreground text-xs">Sync your LMS or add tasks manually</p>
             </div>
           ) : (
             <div className="space-y-1.5">
-              {/* Incomplete tasks */}
-              {tasks.map((task) => {
+              {visibleTasks.map((task) => {
                 const status = getTaskStatus(task.due_date!);
                 const label = getTaskLabel(task.due_date!);
                 const colours = getTaskColour(status);
@@ -394,7 +417,9 @@ export default function HomePage() {
                     className="flex items-center gap-3 glass-card rounded-xl px-3 py-3 w-full text-left hover:bg-white/5 transition-colors">
                     <div className={cn('w-4 h-4 rounded-md border-2 border-white/20 shrink-0')} />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-white leading-tight truncate">{task.title}</p>
+                      <p className="font-semibold text-sm text-white leading-tight truncate">
+                        {cleanTitle(task.title)}
+                      </p>
                     </div>
                     <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
                       {label}
@@ -403,7 +428,6 @@ export default function HomePage() {
                 );
               })}
 
-              {/* Completed tasks */}
               {completedTasks.length > 0 && (
                 <>
                   <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
@@ -415,7 +439,7 @@ export default function HomePage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-sm text-white leading-tight truncate line-through">
-                          {task.title}
+                          {cleanTitle(task.title)}
                         </p>
                       </div>
                       <span className="text-[10px] text-white/30">Done</span>
