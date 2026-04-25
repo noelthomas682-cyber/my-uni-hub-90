@@ -17,7 +17,6 @@ import Onboarding from "./pages/Onboarding";
 import LmsSettings from "./pages/LmsSettings";
 import ChatPage from "./pages/ChatPage";
 import TeamHubPage from "./pages/TeamHubPage";
-import TeamHubPage from "./pages/TeamHubPage";
  
 const queryClient = new QueryClient();
  
@@ -41,7 +40,6 @@ const App = () => (
               <Route path="/me" element={<MePage />} />
               <Route path="/lms-settings" element={<LmsSettings />} />
               <Route path="/chat" element={<ChatPage />} />
-              <Route path="/team/:teamId" element={<TeamHubPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
