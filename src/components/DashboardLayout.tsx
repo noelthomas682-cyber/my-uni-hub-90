@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import BottomNav from './BottomNav';
+import FeedbackButton from './FeedbackButton';
 
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
@@ -37,6 +38,7 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
         <BottomNav />
+        <FeedbackButton />
       </div>
     </div>
   );
