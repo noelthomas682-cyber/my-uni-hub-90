@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Send, Clock, Check, XCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -229,6 +230,7 @@ function IncomingRequests({ userId }: { userId: string }) {
 }
 
 export default function SocialPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SubTab>('contacts');
   const [contacts, setContacts] = useState<any[]>([]);
@@ -559,7 +561,7 @@ export default function SocialPage() {
                   <p className="text-xs text-muted-foreground mt-1">Create or join a team above</p>
                 </div>
               ) : teams.map(t => (
-                <button key={t.id} onClick={() => navigate(`/team/${t.id}`)}
+                <button key={t.id} onClick={() => navigate(`/team/${t.id}`)} className="glass-card rounded-xl p-4 w-full text-left hover:bg-white/5 transition-colors">
                   className="glass-card rounded-xl p-4 w-full text-left hover:bg-white/5 transition-colors">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{t.emoji || '🏆'}</span>
