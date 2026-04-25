@@ -371,16 +371,21 @@ export default function SocialPage() {
 
   const createGroupChat = async (team: any) => {
     if (!user) return;
-    const { data: conv, error } = await supabase.from('conversations').insert({
-      type: 'group', name: team.name, team_id: team.id
-    }).select().single();
+    // Generate ID client-side to avoid select-after-insert RLS issues
+    const convId = crypto.randomUUID();
+    const { error } = await supabase.from('conversations').insert({
+      id: convId,
+      type: 'group',
+      name: team.name,
+      team_id: team.id,
+    });
     if (error) {
       toast.error('Could not create group chat. You can create it later from the chat page.');
       setPendingGroupChatTeam(null);
       return;
     }
     await supabase.from('conversation_members').insert({
-      conversation_id: conv.id, user_id: user.id
+      conversation_id: convId, user_id: user.id
     });
     toast.success(`Group chat created for ${team.name}!`);
     setPendingGroupChatTeam(null);
