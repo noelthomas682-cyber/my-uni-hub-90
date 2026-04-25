@@ -1,3 +1,6 @@
+App · TSX
+Copy
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -15,9 +18,10 @@ import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
 import LmsSettings from "./pages/LmsSettings";
 import ChatPage from "./pages/ChatPage";
-
+import TeamHubPage from "./pages/TeamHubPage";
+ 
 const queryClient = new QueryClient();
-
+ 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -33,6 +37,7 @@ const App = () => (
               <Route path="/home" element={<HomePage />} />
               <Route path="/plan" element={<PlanPage />} />
               <Route path="/social" element={<SocialPage />} />
+              <Route path="/team/:teamId" element={<TeamHubPage />} />
               <Route path="/bulletin" element={<BulletinPage />} />
               <Route path="/me" element={<MePage />} />
               <Route path="/lms-settings" element={<LmsSettings />} />
@@ -45,5 +50,5 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
-
+ 
 export default App;

@@ -559,39 +559,23 @@ export default function SocialPage() {
                   <p className="text-xs text-muted-foreground mt-1">Create or join a team above</p>
                 </div>
               ) : teams.map(t => (
-                <div key={t.id} className="glass-card rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{t.emoji || '🏆'}</span>
-                      <div>
-                        <p className="font-medium text-sm">{t.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {t.sport && <p className="text-xs text-muted-foreground">{t.sport}</p>}
-                          <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium',
-                            t.myRole === 'captain' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
-                            {t.myRole === 'captain' ? 'Captain' : 'Member'}
-                          </span>
-                        </div>
+                <button key={t.id} onClick={() => navigate(`/team/${t.id}`)}
+                  className="glass-card rounded-xl p-4 w-full text-left hover:bg-white/5 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{t.emoji || '🏆'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{t.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {t.sport && <p className="text-xs text-muted-foreground">{t.sport}</p>}
+                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium',
+                          t.myRole === 'captain' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
+                          {t.myRole === 'captain' ? 'Captain' : 'Member'}
+                        </span>
                       </div>
                     </div>
-                    {t.myRole === 'captain' && (
-                      <button onClick={() => setSelectedTeam(selectedTeam?.id === t.id ? null : t)}
-                        className="flex items-center gap-1 text-xs text-primary font-medium">
-                        <QrCode className="w-3.5 h-3.5" />{selectedTeam?.id === t.id ? 'Hide' : 'Share'}
-                      </button>
-                    )}
+                    <span className="text-xs text-primary">→</span>
                   </div>
-                  {selectedTeam?.id === t.id && (
-                    <div className="mt-4 pt-4 border-t border-border text-center">
-                      <p className="text-xs text-muted-foreground mb-3">Share this QR so members can join</p>
-                      <div className="bg-white p-3 rounded-2xl inline-block mb-3">
-                        <QRCode value={getTeamQRValue(t)} size={150} level="M" />
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-1">Or share this code:</p>
-                      <p className="text-sm font-mono font-bold text-foreground bg-secondary/50 px-4 py-2 rounded-lg inline-block tracking-widest">{t.invite_code}</p>
-                    </div>
-                  )}
-                </div>
+                </button>
               ))}
             </div>
           )}
