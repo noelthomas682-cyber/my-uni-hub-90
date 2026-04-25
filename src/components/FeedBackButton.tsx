@@ -29,7 +29,7 @@ export default function FeedbackButton() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 right-4 z-50 w-72 glass-card rounded-2xl p-4 shadow-xl">
+        <div className="fixed bottom-36 right-4 z-50 w-72 glass-card rounded-2xl p-4 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <p className="font-semibold text-sm">Send Feedback</p>
             <button onClick={() => setOpen(false)}>
@@ -53,8 +53,8 @@ export default function FeedbackButton() {
         </div>
       )}
       <button
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-24 right-4 z-40 w-12 h-12 bg-primary rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+        onClick={() => setOpen(o => !o)}
+        className="fixed right-4 z-40 w-12 h-12 bg-primary rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
         style={{ bottom: open ? '320px' : '88px' }}
       >
         <MessageSquare className="w-5 h-5 text-primary-foreground" />
