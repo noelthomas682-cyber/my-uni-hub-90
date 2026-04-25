@@ -12,93 +12,170 @@ const ACTIVITIES = [
   'Yoga', 'Cycling', 'Dancing', 'Art', 'Meditation'
 ];
 
-const UNI_REGISTRY: Record<string, { name: string; lms: string; lmsPortalUrl: string; lmsSteps: string[] }> = {
+const UNI_REGISTRY: Record<string, {
+  name: string;
+  lms: string;
+  schedulePortalUrl: string;
+  scheduleSteps: string[];
+  assignmentsPortalUrl: string;
+  assignmentsSteps: string[];
+}> = {
   'essex.ac.uk': {
-    name: 'University of Essex', lms: 'Moodle',
-    lmsPortalUrl: 'https://moodle.essex.ac.uk/calendar/export.php',
-    lmsSteps: [
+    name: 'University of Essex',
+    lms: 'Moodle',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Essex Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Select your timetable calendar and copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://moodle.essex.ac.uk/calendar/export.php',
+    assignmentsSteps: [
       'Open Essex Moodle → Calendar → Export calendar',
       'Set "All events" · Date range: today → 1 year ahead',
       'Click "Get calendar URL" and copy the link',
     ],
   },
   'manchester.ac.uk': {
-    name: 'University of Manchester', lms: 'Blackboard',
-    lmsPortalUrl: 'https://online.manchester.ac.uk',
-    lmsSteps: [
+    name: 'University of Manchester',
+    lms: 'Blackboard',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Manchester Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://online.manchester.ac.uk',
+    assignmentsSteps: [
       'Open Manchester Blackboard',
       'Go to My Blackboard → Calendar',
       'Click "Get Calendar Feed" and copy the URL',
     ],
   },
   'ucl.ac.uk': {
-    name: 'University College London', lms: 'Moodle',
-    lmsPortalUrl: 'https://moodle.ucl.ac.uk/calendar/export.php',
-    lmsSteps: [
+    name: 'University College London',
+    lms: 'Moodle',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your UCL Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://moodle.ucl.ac.uk/calendar/export.php',
+    assignmentsSteps: [
       'Open UCL Moodle → Calendar → Export calendar',
       'Set "All events" · Date range: today → 1 year ahead',
       'Click "Get calendar URL" and copy the link',
     ],
   },
   'kcl.ac.uk': {
-    name: "King's College London", lms: 'Canvas',
-    lmsPortalUrl: 'https://kcl.instructure.com/profile/settings',
-    lmsSteps: [
-      'Open KCL Canvas settings',
+    name: "King's College London",
+    lms: 'Canvas',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your KCL Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://kcl.instructure.com/profile/settings',
+    assignmentsSteps: [
+      'Open KCL Canvas → Profile Settings',
       'Scroll to "Other Feeds" → "Calendar Feed"',
       'Copy the URL',
     ],
   },
   'imperial.ac.uk': {
-    name: 'Imperial College London', lms: 'Blackboard',
-    lmsPortalUrl: 'https://bb.imperial.ac.uk',
-    lmsSteps: [
+    name: 'Imperial College London',
+    lms: 'Blackboard',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Imperial Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://bb.imperial.ac.uk',
+    assignmentsSteps: [
       'Open Imperial Blackboard',
       'Go to Calendar → Get Calendar Feed',
       'Copy the URL',
     ],
   },
   'ox.ac.uk': {
-    name: 'University of Oxford', lms: 'Canvas',
-    lmsPortalUrl: 'https://canvas.ox.ac.uk/profile/settings',
-    lmsSteps: [
-      'Open Oxford Canvas settings',
+    name: 'University of Oxford',
+    lms: 'Canvas',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Oxford Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://canvas.ox.ac.uk/profile/settings',
+    assignmentsSteps: [
+      'Open Oxford Canvas → Profile Settings',
       'Scroll to "Other Feeds" → "Calendar Feed"',
       'Copy the URL',
     ],
   },
   'cam.ac.uk': {
-    name: 'University of Cambridge', lms: 'Moodle',
-    lmsPortalUrl: 'https://www.vle.cam.ac.uk/calendar/export.php',
-    lmsSteps: [
+    name: 'University of Cambridge',
+    lms: 'Moodle',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Cambridge Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://www.vle.cam.ac.uk/calendar/export.php',
+    assignmentsSteps: [
       'Open Cambridge Moodle → Calendar → Export calendar',
       'Set "All events" · Date range: today → 1 year ahead',
       'Click "Get calendar URL" and copy the link',
     ],
   },
   'ed.ac.uk': {
-    name: 'University of Edinburgh', lms: 'Blackboard',
-    lmsPortalUrl: 'https://learn.ed.ac.uk',
-    lmsSteps: [
-      'Open Edinburgh Learn',
+    name: 'University of Edinburgh',
+    lms: 'Blackboard',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Edinburgh Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://learn.ed.ac.uk',
+    assignmentsSteps: [
+      'Open Edinburgh Learn (Blackboard)',
       'Go to Calendar → Get Calendar Feed',
       'Copy the URL',
     ],
   },
   'birmingham.ac.uk': {
-    name: 'University of Birmingham', lms: 'Canvas',
-    lmsPortalUrl: 'https://canvas.bham.ac.uk/profile/settings',
-    lmsSteps: [
-      'Open Birmingham Canvas settings',
+    name: 'University of Birmingham',
+    lms: 'Canvas',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Birmingham Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://canvas.bham.ac.uk/profile/settings',
+    assignmentsSteps: [
+      'Open Birmingham Canvas → Profile Settings',
       'Scroll to "Calendar Feed"',
       'Copy the URL',
     ],
   },
   'leeds.ac.uk': {
-    name: 'University of Leeds', lms: 'Blackboard',
-    lmsPortalUrl: 'https://minerva.leeds.ac.uk',
-    lmsSteps: [
-      'Open Leeds Minerva',
+    name: 'University of Leeds',
+    lms: 'Blackboard',
+    schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+    scheduleSteps: [
+      'Open your Leeds Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Copy the ICS link',
+    ],
+    assignmentsPortalUrl: 'https://minerva.leeds.ac.uk',
+    assignmentsSteps: [
+      'Open Leeds Minerva (Blackboard)',
       'Go to Calendar → Get Calendar Feed',
       'Copy the URL',
     ],
@@ -115,9 +192,17 @@ function detectUni(email: string) {
   if (UNI_REGISTRY[domain]) return { ...UNI_REGISTRY[domain], domain };
   if (domain.endsWith('.ac.uk') || domain.endsWith('.edu')) {
     return {
-      name: domain, lms: 'Calendar', domain,
-      lmsPortalUrl: 'https://outlook.office365.com/calendar/view/month',
-      lmsSteps: [
+      name: domain,
+      lms: 'Calendar',
+      domain,
+      schedulePortalUrl: 'https://outlook.office365.com/calendar/view/month',
+      scheduleSteps: [
+        'Open your university Outlook calendar',
+        'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+        'Copy the ICS link',
+      ],
+      assignmentsPortalUrl: 'https://outlook.office365.com/calendar/view/month',
+      assignmentsSteps: [
         'Open your university LMS → Calendar',
         'Find Export or Share → ICS / Calendar Feed link',
         'Set date range to today → 1 year ahead if available',
@@ -318,7 +403,7 @@ export default function Onboarding() {
               </p>
             </div>
 
-            {/* Schedule */}
+            {/* Schedule — Outlook */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -349,13 +434,13 @@ export default function Onboarding() {
               {scheduleStatus !== 'success' && (
                 <>
                   <button
-                    onClick={() => window.open(detected?.lmsPortalUrl || 'https://outlook.office365.com/calendar/view/month', '_blank')}
+                    onClick={() => window.open(detected?.schedulePortalUrl || 'https://outlook.office365.com/calendar/view/month', '_blank')}
                     className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
                     <ExternalLink className="w-3.5 h-3.5" />
-                    {detected ? `Open ${detected.name} ${detected.lms}` : 'Open Outlook Calendar'}
+                    Open {detected ? `${detected.name} Outlook` : 'Outlook Calendar'}
                   </button>
                   <div className="space-y-1">
-                    {(detected?.lmsSteps || [
+                    {(detected?.scheduleSteps || [
                       'Open Outlook → Settings → Calendar → Shared calendars',
                       'Click "Publish a calendar"',
                       'Copy the ICS link',
@@ -371,7 +456,7 @@ export default function Onboarding() {
                       type="text"
                       value={scheduleUrl}
                       onChange={e => setScheduleUrl(e.target.value)}
-                      placeholder={detected ? `Paste ${detected.lms} calendar URL...` : 'Paste Outlook ICS URL...'}
+                      placeholder="Paste Outlook ICS URL..."
                       className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     <button
@@ -385,7 +470,7 @@ export default function Onboarding() {
               )}
             </div>
 
-            {/* Assignments */}
+            {/* Assignments — LMS (Moodle/Canvas/Blackboard) */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -415,15 +500,16 @@ export default function Onboarding() {
 
               {assignmentsStatus !== 'success' && (
                 <>
-                  {detected?.lmsPortalUrl && (
-                    <button
-                      onClick={() => window.open(detected.lmsPortalUrl, '_blank')}
-                      className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
-                      <ExternalLink className="w-3.5 h-3.5" />Open {detected.lms || 'University LMS'}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => window.open(detected?.assignmentsPortalUrl || 'https://outlook.office365.com/calendar/view/month', '_blank')}
+                    className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open {detected ? `${detected.name} ${detected.lms}` : 'University LMS'}
+                  </button>
                   <div className="space-y-1">
-                    {(detected?.lmsSteps || ['Open your LMS → Calendar → Export → Copy ICS URL']).map((s: string, i: number) => (
+                    {(detected?.assignmentsSteps || [
+                      'Open your LMS → Calendar → Export → Copy ICS URL',
+                    ]).map((s: string, i: number) => (
                       <p key={i} className="text-[10px] text-muted-foreground leading-relaxed flex gap-1.5">
                         <span className="text-primary/50 font-bold shrink-0">{i + 1}.</span>
                         {s}
@@ -435,7 +521,7 @@ export default function Onboarding() {
                       type="text"
                       value={assignmentsUrl}
                       onChange={e => setAssignmentsUrl(e.target.value)}
-                      placeholder={detected ? `Paste ${detected.lms} assignments URL...` : 'Paste LMS calendar URL...'}
+                      placeholder={detected ? `Paste ${detected.lms} calendar URL...` : 'Paste LMS calendar URL...'}
                       className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                     />
                     <button
