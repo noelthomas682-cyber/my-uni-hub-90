@@ -13,7 +13,6 @@ interface LmsConnection {
   lms_name: string | null;
   base_url: string | null;
   is_connected: boolean | null;
-  is_active: boolean | null;
   last_synced_at: string | null;
   sync_error: string | null;
   tasks_count: number | null;
@@ -29,7 +28,7 @@ const UNI_REGISTRY: Record<string, { name: string; calendarUrl: string; portalUr
     calendarUrl: 'https://moodle.essex.ac.uk/calendar/export.php',
     steps: [
       'Click the button below to open your Essex Moodle calendar',
-      'Select "All events" and set date range to "Custom range"',
+      'Select "All events" · Set date range: today → 1 year ahead',
       'Click "Get calendar URL" and copy the link',
       'Paste it back here',
     ],
@@ -44,7 +43,7 @@ const UNI_REGISTRY: Record<string, { name: string; calendarUrl: string; portalUr
     name: 'University College London', lms: 'Moodle',
     portalUrl: 'https://moodle.ucl.ac.uk/calendar/export.php',
     calendarUrl: 'https://moodle.ucl.ac.uk/calendar/export.php',
-    steps: ['Open UCL Moodle calendar export below', 'Select "All events" and click "Get calendar URL"', 'Copy the URL', 'Paste it back here'],
+    steps: ['Open UCL Moodle calendar export below', 'Select "All events" · Set date range: today → 1 year ahead', 'Click "Get calendar URL" and copy the link', 'Paste it back here'],
   },
   'kcl.ac.uk': {
     name: "King's College London", lms: 'Canvas',
@@ -68,7 +67,7 @@ const UNI_REGISTRY: Record<string, { name: string; calendarUrl: string; portalUr
     name: 'University of Cambridge', lms: 'Moodle',
     portalUrl: 'https://www.vle.cam.ac.uk/calendar/export.php',
     calendarUrl: 'https://www.vle.cam.ac.uk/calendar/export.php',
-    steps: ['Open Cambridge Moodle calendar export below', 'Select "All events" → "Get calendar URL"', 'Copy the URL', 'Paste it back here'],
+    steps: ['Open Cambridge Moodle calendar export below', 'Select "All events" · Set date range: today → 1 year ahead', 'Click "Get calendar URL" and copy the link', 'Paste it back here'],
   },
   'ed.ac.uk': {
     name: 'University of Edinburgh', lms: 'Learn (Blackboard)',
@@ -125,7 +124,6 @@ export default function LmsSettings() {
   useEffect(() => {
     if (!user) return;
 
-    // Auto-detect from user's email
     if (user.email) {
       const uni = detectUniversity(user.email);
       if (uni) setDetected(uni);
@@ -167,7 +165,7 @@ export default function LmsSettings() {
       if (conn) setConnection(conn as LmsConnection);
       setCalInput('');
     } catch (err: any) {
-      toast({ title: 'Import failed', description: err.message, variant: 'destructive' });
+      toast({ title: 'Import failed', description: 'Could not import calendar. Check the URL and try again.', variant: 'destructive' });
     }
     setImporting(false);
   };
@@ -184,7 +182,7 @@ export default function LmsSettings() {
       const { data: conn } = await supabase.from('lms_connections').select('*').eq('user_id', user.id).maybeSingle();
       if (conn) setConnection(conn as LmsConnection);
     } catch (err: any) {
-      toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
+      toast({ title: 'Sync failed', description: 'Could not sync. Please try again.', variant: 'destructive' });
     }
     setSyncing(false);
   };
@@ -196,7 +194,8 @@ export default function LmsSettings() {
     toast({ title: 'Disconnected', description: 'LMS connection removed.' });
   };
 
-  const isConnected = connection && (connection.is_connected || connection.is_active);
+  // Fixed: removed is_active reference since column doesn't exist
+  const isConnected = connection?.is_connected === true;
 
   return (
     <div className="px-5 pt-14 pb-24 max-w-lg mx-auto space-y-5 animate-fade-in">
@@ -328,7 +327,7 @@ export default function LmsSettings() {
                   {[
                     { platform: 'Outlook Web', path: 'Settings → Calendar → Shared calendars → Publish a calendar → Copy ICS link' },
                     { platform: 'Canvas', path: 'Profile Settings → scroll to Calendar Feed → copy URL' },
-                    { platform: 'Moodle', path: 'Calendar → Export calendar → Get calendar URL' },
+                    { platform: 'Moodle', path: 'Calendar → Export calendar → Set date range: today → 1 year ahead → Get calendar URL' },
                     { platform: 'Google Calendar', path: 'Settings → your calendar → Secret address in iCal format' },
                   ].map(item => (
                     <div key={item.platform} className="bg-secondary/40 rounded-lg p-2.5">
