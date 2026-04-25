@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-type BulletinTab = 'sessions' | 'university';
+type BulletinTab = 'university' | 'sessions';
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
@@ -24,7 +24,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => vo
 
 export default function BulletinPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<BulletinTab>('sessions');
+  const [activeTab, setActiveTab] = useState<BulletinTab>('university');
   const [sessions, setSessions] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [rsvps, setRsvps] = useState<Record<string, string>>({});
@@ -216,8 +216,8 @@ export default function BulletinPage() {
 
       <div className="flex gap-2 mb-5">
         {[
-          { key: 'sessions', label: 'Sessions', Icon: Megaphone },
           { key: 'university', label: 'University', Icon: GraduationCap },
+          { key: 'sessions', label: 'Sessions', Icon: Megaphone },
         ].map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setActiveTab(key as BulletinTab)}
             className={cn(
@@ -378,7 +378,11 @@ export default function BulletinPage() {
                                 {a.published_at && <span className="text-[10px] text-muted-foreground">{format(new Date(a.published_at), 'MMM d')}</span>}
                               </div>
                               <h3 className="font-semibold text-sm leading-snug mb-1">{a.title}</h3>
-                              {a.description && <p className="text-xs text-muted-foreground line-clamp-2">{a.description}</p>}
+                              {a.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">
+                                  {a.description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()}
+                                </p>
+                              )}
                             </div>
                             {a.url && (
                               <button onClick={() => window.open(a.url, '_blank')}
