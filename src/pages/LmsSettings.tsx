@@ -160,7 +160,21 @@ export default function LmsSettings() {
         body: { url: calInput.trim(), userId: user.id }
       });
       if (error) throw new Error(error.message);
+
+      // Explicitly upsert the connection record
+      const domain = user.email?.split('@')[1]?.toLowerCase() || '';
+      await supabase.from('lms_connections').upsert({
+        user_id: user.id,
+        email_domain: domain,
+        lms_type: 'ics',
+        lms_name: detected?.name || 'Calendar Sync',
+        base_url: calInput.trim(),
+        auth_method: 'none',
+        is_connected: true,
+      }, { onConflict: 'user_id' });
+
       toast({ title: 'Schedule imported!', description: `Synced ${data?.events || 0} events and ${data?.tasks || 0} tasks.` });
+
       const { data: conn } = await supabase.from('lms_connections').select('*').eq('user_id', user.id).maybeSingle();
       if (conn) setConnection(conn as LmsConnection);
       setCalInput('');
