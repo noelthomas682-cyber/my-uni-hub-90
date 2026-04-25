@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+wimport { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -348,34 +348,18 @@ export default function Onboarding() {
 
               {scheduleStatus !== 'success' && (
                 <>
-                  <button
-                    onClick={() => window.open(detected?.lmsPortalUrl || 'https://outlook.office365.com/calendar/view/month', '_blank')}
+                  <button onClick={() => window.open('https://outlook.office365.com/calendar/view/month', '_blank')}
                     className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    {detected ? `Open ${detected.name} ${detected.lms}` : 'Open Outlook Calendar'}
+                    <ExternalLink className="w-3.5 h-3.5" />Open Outlook Calendar
                   </button>
-                  <div className="space-y-1">
-                    {(detected?.lmsSteps || [
-                      'Open Outlook → Settings → Calendar → Shared calendars',
-                      'Click "Publish a calendar"',
-                      'Copy the ICS link',
-                    ]).map((s: string, i: number) => (
-                      <p key={i} className="text-[10px] text-muted-foreground leading-relaxed flex gap-1.5">
-                        <span className="text-primary/50 font-bold shrink-0">{i + 1}.</span>
-                        {s}
-                      </p>
-                    ))}
-                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Outlook → Settings → Calendar → Shared calendars → Publish a calendar → Copy ICS link
+                  </p>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={scheduleUrl}
-                      onChange={e => setScheduleUrl(e.target.value)}
-                      placeholder={detected ? `Paste ${detected.lms} calendar URL...` : 'Paste Outlook ICS URL...'}
-                      className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                    <button
-                      onClick={() => importUrl(scheduleUrl, 'schedule')}
+                    <input type="text" value={scheduleUrl} onChange={e => setScheduleUrl(e.target.value)}
+                      placeholder="Paste Outlook ICS URL..."
+                      className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                    <button onClick={() => importUrl(scheduleUrl, 'schedule')}
                       disabled={!scheduleUrl.trim() || scheduleStatus === 'loading'}
                       className="px-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center">
                       {scheduleStatus === 'loading' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
@@ -416,30 +400,24 @@ export default function Onboarding() {
               {assignmentsStatus !== 'success' && (
                 <>
                   {detected?.lmsPortalUrl && (
-                    <button
-                      onClick={() => window.open(detected.lmsPortalUrl, '_blank')}
+                    <button onClick={() => window.open(detected.lmsPortalUrl, '_blank')}
                       className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
                       <ExternalLink className="w-3.5 h-3.5" />Open {detected.lms || 'University LMS'}
                     </button>
                   )}
                   <div className="space-y-1">
-                    {(detected?.lmsSteps || ['Open your LMS → Calendar → Export → Copy ICS URL']).map((s: string, i: number) => (
+                    {(detected?.lmsSteps || ['Open your LMS → Calendar → Export → Copy ICS URL']).map((step: string, i: number) => (
                       <p key={i} className="text-[10px] text-muted-foreground leading-relaxed flex gap-1.5">
                         <span className="text-primary/50 font-bold shrink-0">{i + 1}.</span>
-                        {s}
+                        {step}
                       </p>
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={assignmentsUrl}
-                      onChange={e => setAssignmentsUrl(e.target.value)}
-                      placeholder={detected ? `Paste ${detected.lms} assignments URL...` : 'Paste LMS calendar URL...'}
-                      className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    />
-                    <button
-                      onClick={() => importUrl(assignmentsUrl, 'assignments')}
+                    <input type="text" value={assignmentsUrl} onChange={e => setAssignmentsUrl(e.target.value)}
+                      placeholder="Paste LMS calendar URL..."
+                      className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                    <button onClick={() => importUrl(assignmentsUrl, 'assignments')}
                       disabled={!assignmentsUrl.trim() || assignmentsStatus === 'loading'}
                       className="px-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center">
                       {assignmentsStatus === 'loading' ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
