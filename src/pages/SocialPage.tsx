@@ -562,7 +562,6 @@ export default function SocialPage() {
                 </div>
               ) : teams.map(t => (
                 <button key={t.id} onClick={() => navigate(`/team/${t.id}`)} className="glass-card rounded-xl p-4 w-full text-left hover:bg-white/5 transition-colors">
-                  className="glass-card rounded-xl p-4 w-full text-left hover:bg-white/5 transition-colors">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{t.emoji || '🏆'}</span>
                     <div className="flex-1 min-w-0">
