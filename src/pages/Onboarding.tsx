@@ -69,6 +69,50 @@ const LMS_INSTRUCTIONS: Record<string, {
   },
 };
 
+const SCHEDULE_INSTRUCTIONS: Record<string, {
+  portalUrl: string;
+  steps: string[];
+  buttonLabel: string;
+}> = {
+  microsoft: {
+    portalUrl: 'https://outlook.office365.com/calendar/view/month',
+    steps: [
+      'Open your university Outlook calendar',
+      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
+      'Select your timetable calendar and copy the ICS link',
+    ],
+    buttonLabel: 'Open Outlook Calendar',
+  },
+  google: {
+    portalUrl: 'https://calendar.google.com',
+    steps: [
+      'Open your university Google Calendar',
+      'Click the three dots next to your timetable calendar → Settings and sharing',
+      'Scroll to "Integrate calendar" and copy the "Secret address in iCal format"',
+      'Paste it below',
+    ],
+    buttonLabel: 'Open Google Calendar',
+  },
+  other: {
+    portalUrl: '',
+    steps: [
+      'Open your university calendar portal',
+      'Find the export or subscribe option',
+      'Copy the ICS/calendar URL and paste it below',
+    ],
+    buttonLabel: 'Open University Calendar',
+  },
+  unknown: {
+    portalUrl: 'https://outlook.office365.com/calendar/view/month',
+    steps: [
+      'Open your university calendar (Outlook or Google)',
+      'Find the calendar sharing or export settings',
+      'Copy the ICS link and paste it below',
+    ],
+    buttonLabel: 'Open Calendar',
+  },
+};
+
 function getDomain(email: string) {
   return email.split('@')[1]?.toLowerCase() || null;
 }
@@ -78,8 +122,9 @@ type ImportStatus = 'idle' | 'loading' | 'success' | 'error';
 interface DetectedUni {
   name: string;
   domain: string;
-  lms?: string;
-  instance_url?: string;
+  lms_type?: string;
+  lms_instance_url?: string;
+  email_system?: string;
   news_feed_url?: string;
   color?: string;
 }
@@ -97,6 +142,7 @@ export default function Onboarding() {
 
   const [detected, setDetected] = useState<DetectedUni | null>(null);
   const [detectedLms, setDetectedLms] = useState<string>('default');
+  const [detectedEmailSystem, setDetectedEmailSystem] = useState<string>('unknown');
   const [lmsInstanceUrl, setLmsInstanceUrl] = useState<string>('');
 
   const [scheduleUrl, setScheduleUrl] = useState('');
@@ -133,26 +179,38 @@ export default function Onboarding() {
 
       const domain = getDomain(user.email || '');
       if (domain) {
+        // Single query — reads everything needed from registry
         const { data: uni } = await supabase
           .from('university_registry')
-          .select('name, domain, news_feed_url, color')
+          .select('name, domain, news_feed_url, color, lms_type, lms_instance_url, email_system')
           .eq('domain', domain)
           .eq('is_active', true)
           .maybeSingle();
 
         if (uni) {
-          setDetected({ name: uni.name, domain: uni.domain, news_feed_url: uni.news_feed_url, color: uni.color });
+          setDetected({
+            name: uni.name,
+            domain: uni.domain,
+            news_feed_url: uni.news_feed_url,
+            color: uni.color,
+            lms_type: uni.lms_type,
+            lms_instance_url: uni.lms_instance_url,
+            email_system: uni.email_system,
+          });
 
-          try {
-            const { data: lmsData } = await supabase.functions.invoke('detect-lms', {
-              body: { domain }
-            });
-            if (lmsData?.lms) {
-              setDetectedLms(lmsData.lms.toLowerCase());
-              if (lmsData.instance_url) setLmsInstanceUrl(lmsData.instance_url);
-            }
-          } catch {
-            setDetectedLms('default');
+          // Set LMS type from registry — no detect-lms call needed
+          if (uni.lms_type && uni.lms_type !== 'unknown') {
+            setDetectedLms(uni.lms_type);
+          }
+
+          // Set email system from registry
+          if (uni.email_system && uni.email_system !== 'unknown') {
+            setDetectedEmailSystem(uni.email_system);
+          }
+
+          // Set LMS instance URL from registry
+          if (uni.lms_instance_url) {
+            setLmsInstanceUrl(uni.lms_instance_url);
           }
         }
       }
@@ -249,11 +307,17 @@ export default function Onboarding() {
     navigate('/home', { replace: true });
   };
 
+  // Derive UI from registry data
   const lmsInstructions = LMS_INSTRUCTIONS[detectedLms] || LMS_INSTRUCTIONS.default;
-  const lmsLabel = detectedLms === 'default' ? 'University LMS' : detectedLms.charAt(0).toUpperCase() + detectedLms.slice(1);
+  const scheduleInstructions = SCHEDULE_INSTRUCTIONS[detectedEmailSystem] || SCHEDULE_INSTRUCTIONS.unknown;
+  const lmsLabel = detectedLms === 'default' ? 'University LMS'
+    : detectedLms.charAt(0).toUpperCase() + detectedLms.slice(1);
+
   const assignmentsPortalUrl = lmsInstanceUrl
     ? `${lmsInstanceUrl}${lmsInstructions.assignmentsPortalPath}`
     : null;
+
+  const schedulePortalUrl = scheduleInstructions.portalUrl || null;
 
   if (checking) return null;
 
@@ -289,7 +353,10 @@ export default function Onboarding() {
                 <div>
                   <p className="text-sm text-primary font-medium">{detected.name}</p>
                   {detectedLms !== 'default' && (
-                    <p className="text-xs text-primary/70">{lmsLabel} detected</p>
+                    <p className="text-xs text-primary/70">
+                      {detectedEmailSystem !== 'unknown' && `${detectedEmailSystem === 'google' ? 'Google Workspace' : 'Microsoft 365'} · `}
+                      {lmsLabel} detected
+                    </p>
                   )}
                 </div>
               </div>
@@ -310,7 +377,7 @@ export default function Onboarding() {
               </p>
             </div>
 
-            {/* Schedule — Outlook */}
+            {/* Schedule */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -339,18 +406,17 @@ export default function Onboarding() {
 
               {scheduleStatus !== 'success' && (
                 <>
-                  <button
-                    onClick={() => window.open('https://outlook.office365.com/calendar/view/month', '_blank')}
-                    className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open {detected ? `${detected.name} Outlook` : 'Outlook Calendar'}
-                  </button>
+                  {schedulePortalUrl && (
+                    <button
+                      onClick={() => window.open(schedulePortalUrl, '_blank')}
+                      className="w-full flex items-center justify-center gap-2 bg-secondary text-foreground rounded-xl py-2.5 text-xs font-semibold hover:bg-secondary/80 transition-colors">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      {scheduleInstructions.buttonLabel}
+                      {detected && ` — ${detected.name}`}
+                    </button>
+                  )}
                   <div className="space-y-1">
-                    {[
-                      'Open your university Outlook calendar',
-                      'Go to Settings → Calendar → Shared calendars → Publish a calendar',
-                      'Select your timetable calendar and copy the ICS link',
-                    ].map((s, i) => (
+                    {scheduleInstructions.steps.map((s, i) => (
                       <p key={i} className="text-[10px] text-muted-foreground leading-relaxed flex gap-1.5">
                         <span className="text-primary/50 font-bold shrink-0">{i + 1}.</span>{s}
                       </p>
@@ -358,7 +424,7 @@ export default function Onboarding() {
                   </div>
                   <div className="flex gap-2">
                     <input type="text" value={scheduleUrl} onChange={e => setScheduleUrl(e.target.value)}
-                      placeholder="Paste Outlook ICS URL..."
+                      placeholder={detectedEmailSystem === 'google' ? 'Paste Google Calendar ICS URL...' : 'Paste Outlook ICS URL...'}
                       className="flex-1 bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
                     <button onClick={() => importUrl(scheduleUrl, 'schedule')}
                       disabled={!scheduleUrl.trim() || scheduleStatus === 'loading'}
@@ -370,7 +436,7 @@ export default function Onboarding() {
               )}
             </div>
 
-            {/* Assignments — LMS-specific */}
+            {/* Assignments — LMS specific */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
