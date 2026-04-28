@@ -20,7 +20,6 @@ interface Goal {
   created_at: string;
 }
 
-// Clean up ugly LMS-generated task titles
 function cleanTitle(title: string): string {
   return title
     .replace(/^Electronic Deadline:\s*/i, '')
@@ -29,9 +28,7 @@ function cleanTitle(title: string): string {
     .replace(/^Assignment:\s*/i, '')
     .replace(/^Quiz:\s*/i, '')
     .replace(/^Test:\s*/i, '')
-    // Remove leading "COURSECODE: COURSECODE - " duplicate pattern e.g. "LW111-4-SP: LW111-4-SP - Title"
     .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
-    // Remove leading "COURSECODE: " prefix e.g. "LW111-4-SP: Title"
     .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
     .trim();
 }
@@ -159,6 +156,7 @@ export default function PlanPage() {
 
   const addTask = async () => {
     if (!newTaskTitle.trim() || !user) return;
+    // FIX: removed 'source' field — not in tasks schema
     const { data, error } = await supabase.from('tasks').insert({
       user_id: user.id,
       title: newTaskTitle.trim(),
@@ -166,7 +164,6 @@ export default function PlanPage() {
       priority: newTaskPriority,
       course_code: newTaskCourse || null,
       is_complete: false,
-      source: 'manual',
     }).select().single();
     if (error) { toast.error('Could not create task. Please try again.'); return; }
     setTasks(prev => [data, ...prev]);
@@ -251,21 +248,18 @@ export default function PlanPage() {
     { key: 'goals' as SubTab, label: 'Goals', icon: Target },
   ];
 
-  // Split incomplete tasks into dated and undated
-  // On plan page show ALL tasks including old overdue (unlike home which hides >14 days)
   const datedTasks = tasks.filter(t => t.due_date && (
     !isPast(new Date(t.due_date)) ||
     isToday(new Date(t.due_date)) ||
     differenceInDays(new Date(), new Date(t.due_date)) <= 14
   ));
-  const oldOverdueTasks = tasks.filter(t => 
+  const oldOverdueTasks = tasks.filter(t =>
     t.due_date &&
     isPast(new Date(t.due_date)) &&
     !isToday(new Date(t.due_date)) &&
     differenceInDays(new Date(), new Date(t.due_date)) > 14
   );
   const undatedTasks = tasks.filter(t => !t.due_date);
-  const hiddenOldCount = oldOverdueTasks.length;
 
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
@@ -392,7 +386,6 @@ export default function PlanPage() {
                 <p className="text-muted-foreground text-sm text-center py-10">All caught up!</p>
               ) : (
                 <>
-                  {/* Dated tasks */}
                   {datedTasks.map(t => {
                     const status = getTaskStatus(t.due_date);
                     const label = getTaskLabel(t.due_date);
@@ -412,11 +405,9 @@ export default function PlanPage() {
                     );
                   })}
 
-                  {/* Old overdue — collapsed by default */}
                   {oldOverdueTasks.length > 0 && (
                     <>
-                      <button
-                        onClick={() => setShowOldOverdue(prev => !prev)}
+                      <button onClick={() => setShowOldOverdue(prev => !prev)}
                         className="w-full flex items-center justify-between pt-2 pb-1">
                         <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold">
                           Old overdue ({oldOverdueTasks.length})
@@ -442,7 +433,6 @@ export default function PlanPage() {
                     </>
                   )}
 
-                  {/* Someday — tasks with no due date */}
                   {undatedTasks.length > 0 && (
                     <>
                       <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold pt-2">Someday</p>
@@ -462,7 +452,6 @@ export default function PlanPage() {
                     </>
                   )}
 
-                  {/* Completed tasks */}
                   {completedTasks.length > 0 && (
                     <>
                       <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>

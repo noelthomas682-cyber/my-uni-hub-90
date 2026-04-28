@@ -271,7 +271,7 @@ export default function SocialPage() {
 
     if (activeTab === 'contacts') {
       supabase.from('contacts')
-        .select('contact_id, profiles!contacts_contact_id_fkey(id, full_name, email, university, course)')
+        .select('contact_id, profiles(*)')
         .eq('user_id', user.id)
         .then(({ data, error }) => {
           if (error) setError('Could not load contacts.');
@@ -355,9 +355,11 @@ export default function SocialPage() {
     setCreatingTeam(true);
     const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
     const { data: team, error } = await supabase.from('teams').insert({
-      name: teamName.trim(), sport: teamSport || null, emoji: teamEmoji,
-      captain_id: user.id, university: profile?.university || null,
-      invite_code: inviteCode, invite_token: crypto.randomUUID(),
+      name: teamName.trim(),
+      description: teamSport || null,
+      emoji: teamEmoji,
+      created_by: user.id,
+      invite_code: inviteCode,
     }).select().single();
     if (error) { toast.error('Could not create team. Please try again.'); setCreatingTeam(false); return; }
     const { error: memberError } = await supabase.from('team_members').insert({ team_id: team.id, user_id: user.id, role: 'captain' });
@@ -373,22 +375,20 @@ export default function SocialPage() {
 
   const createGroupChat = async (team: any) => {
     if (!user) return;
-    // Generate ID client-side to avoid select-after-insert RLS issues
     const convId = crypto.randomUUID();
     const { error } = await supabase.from('conversations').insert({
       id: convId,
       type: 'group',
       name: team.name,
       team_id: team.id,
+      created_by: user.id,
     });
     if (error) {
       toast.error('Could not create group chat. You can create it later from the chat page.');
       setPendingGroupChatTeam(null);
       return;
     }
-    await supabase.from('conversation_members').insert({
-      conversation_id: convId, user_id: user.id
-    });
+    await supabase.from('conversation_members').insert({ conversation_id: convId, user_id: user.id });
     toast.success(`Group chat created for ${team.name}!`);
     setPendingGroupChatTeam(null);
   };
@@ -398,7 +398,6 @@ export default function SocialPage() {
     toast.success(`${team.name} created! Share the QR code to add members.`);
   };
 
-  const getTeamQRValue = (team: any) => `rute://team/${team.invite_token || team.invite_code}`;
   const qrValue = profile?.qr_token ? `rute://add/${profile.qr_token}` : '';
 
   return (
@@ -567,7 +566,7 @@ export default function SocialPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{t.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {t.sport && <p className="text-xs text-muted-foreground">{t.sport}</p>}
+                        {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
                         <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium',
                           t.myRole === 'captain' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
                           {t.myRole === 'captain' ? 'Captain' : 'Member'}

@@ -17,6 +17,7 @@ export default function ChatPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [showNewChat, setShowNewChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -27,6 +28,12 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
+    };
+  }, []);
 
   const loadConversations = async () => {
     const { data } = await supabase
@@ -39,7 +46,7 @@ export default function ChatPage() {
   const loadContacts = async () => {
     const { data } = await supabase
       .from('contacts')
-      .select('contact_id, profiles!contacts_contact_id_fkey(id, full_name, email, avatar_url)')
+      .select('contact_id, profiles(*)')
       .eq('user_id', user!.id);
     setContacts(data?.map((d: any) => d.profiles).filter(Boolean) || []);
   };
@@ -52,11 +59,17 @@ export default function ChatPage() {
       .order('created_at');
     setMessages(data || []);
 
-    // Realtime
-    supabase.channel(`conv-${convId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${convId}` },
-        (payload) => setMessages(prev => [...prev, payload.new]))
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
+
+    const channel = supabase
+      .channel(`conv-${convId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public',
+        table: 'messages', filter: `conversation_id=eq.${convId}`,
+      }, (payload) => setMessages((prev) => [...prev, payload.new]))
       .subscribe();
+
+    channelRef.current = channel;
   };
 
   const openConversation = (conv: any) => {
@@ -66,7 +79,6 @@ export default function ChatPage() {
   };
 
   const startNewChat = async (contact: any) => {
-    // Check if conversation already exists
     const { data: existing } = await supabase
       .from('conversation_members')
       .select('conversation_id')
@@ -82,25 +94,25 @@ export default function ChatPage() {
         .in('conversation_id', convIds);
 
       if (shared && shared.length > 0) {
-        const conv = conversations.find(c => c.id === shared[0].conversation_id);
+        const conv = conversations.find((c) => c.id === shared[0].conversation_id);
         if (conv) { openConversation(conv); return; }
       }
     }
 
-    // Create new conversation
-    const { data: newConv } = await supabase
+    const { data: newConv, error } = await supabase
       .from('conversations')
-      .insert({ type: 'direct' })
-      .select().single();
+      .insert({ type: 'direct', created_by: user!.id })
+      .select()
+      .single();
 
-    if (!newConv) return;
+    if (!newConv || error) return;
 
     await supabase.from('conversation_members').insert([
       { conversation_id: newConv.id, user_id: user!.id },
       { conversation_id: newConv.id, user_id: contact.id },
     ]);
 
-    setConversations(prev => [...prev, newConv]);
+    setConversations((prev) => [...prev, newConv]);
     openConversation({ ...newConv, contact });
   };
 
@@ -111,7 +123,6 @@ export default function ChatPage() {
       conversation_id: activeConv.id,
       sender_id: user!.id,
       content: newMessage.trim(),
-      message_type: 'text',
     });
     setNewMessage('');
     setSending(false);
@@ -119,14 +130,13 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
       <div className="flex items-center gap-3 px-5 pt-12 pb-4 border-b border-border/40">
         <button onClick={() => activeConv ? setActiveConv(null) : navigate('/home')}
           className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h1 className="font-heading text-xl font-bold flex-1">
-          {activeConv ? (activeConv.name || activeConv.contact?.full_name || 'Chat') : 'Messages'}
+          {activeConv ? activeConv.name || activeConv.contact?.full_name || 'Chat' : 'Messages'}
         </h1>
         {!activeConv && (
           <button onClick={() => setShowNewChat(!showNewChat)}
@@ -138,13 +148,16 @@ export default function ChatPage() {
 
       {!activeConv ? (
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* New chat — contact list */}
           {showNewChat && (
             <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">Start a conversation</p>
+              <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">
+                Start a conversation
+              </p>
               {contacts.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No contacts yet — add classmates via QR code in Social</p>
-              ) : contacts.map(contact => (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  No contacts yet — add classmates via QR code in Social
+                </p>
+              ) : contacts.map((contact) => (
                 <button key={contact.id} onClick={() => startNewChat(contact)}
                   className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors">
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
@@ -161,7 +174,6 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* Conversation list */}
           {conversations.length === 0 && !showNewChat ? (
             <div className="text-center py-20">
               <p className="font-heading font-bold text-lg mb-2">No messages yet</p>
@@ -171,7 +183,7 @@ export default function ChatPage() {
                 New Message
               </button>
             </div>
-          ) : conversations.map(conv => (
+          ) : conversations.map((conv) => (
             <button key={conv.id} onClick={() => openConversation(conv)}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors mb-1">
               <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
@@ -188,18 +200,16 @@ export default function ChatPage() {
         </div>
       ) : (
         <>
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-            {messages.map(msg => (
-              <div key={msg.id} className={cn("flex", msg.sender_id === user!.id ? "justify-end" : "justify-start")}>
-                <div className={cn("max-w-[75%] px-4 py-2.5 rounded-2xl text-sm",
+            {messages.map((msg) => (
+              <div key={msg.id} className={cn('flex', msg.sender_id === user!.id ? 'justify-end' : 'justify-start')}>
+                <div className={cn('max-w-[75%] px-4 py-2.5 rounded-2xl text-sm',
                   msg.sender_id === user!.id
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-secondary text-foreground rounded-bl-sm"
-                )}>
+                    ? 'bg-primary text-primary-foreground rounded-br-sm'
+                    : 'bg-secondary text-foreground rounded-bl-sm')}>
                   <p>{msg.content}</p>
-                  <p className={cn("text-[10px] mt-1",
-                    msg.sender_id === user!.id ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                  <p className={cn('text-[10px] mt-1',
+                    msg.sender_id === user!.id ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
                     {format(new Date(msg.created_at), 'h:mm a')}
                   </p>
                 </div>
@@ -208,13 +218,10 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div className="px-5 py-4 border-t border-border/40 flex items-center gap-3">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={e => setNewMessage(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            <input type="text" value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type a message..."
               className="flex-1 bg-secondary/60 rounded-full px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />

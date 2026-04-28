@@ -140,28 +140,44 @@ export default function BulletinPage() {
     if (error) { setError('Could not load announcements.'); setLoading(false); return; }
     setAnnouncements(data || []);
     setLoading(false);
+    // FIX: only attempt feed fetch if we have data gap — wrapped in try/catch
+    // so a missing Edge Function doesn't crash the page
     if (!data || data.length === 0) fetchUniFeed(domain);
   };
 
+  // FIX: fetch-uni-feed is an Edge Function that may not be deployed yet.
+  // Wrapped to fail silently so the rest of the page works fine.
   const fetchUniFeed = async (domain: string) => {
     if (!domain) return;
     setFetchingFeed(true);
     try {
       const { data, error } = await supabase.functions.invoke('fetch-uni-feed', { body: { domain } });
-      if (error) throw new Error(error.message);
+
+      // Edge Function not deployed yet — fail gracefully
+      if (error) {
+        console.warn('fetch-uni-feed not available:', error.message);
+        setFetchingFeed(false);
+        return;
+      }
+
       if (data?.error === 'University not supported yet') {
         toast.error("Your university isn't in our system yet — we're adding new ones regularly.");
         setFetchingFeed(false);
         return;
       }
-      toast.success('Feed updated: ' + ((data?.news ?? 0) + (data?.events ?? 0)) + ' items');
-      const { data: fresh } = await supabase
-        .from('announcements').select('*')
-        .eq('university_domain', domain)
-        .order('published_at', { ascending: false }).limit(30);
-      setAnnouncements(fresh || []);
+
+      const count = (data?.news ?? 0) + (data?.events ?? 0);
+      if (count > 0) {
+        toast.success(`Feed updated: ${count} items`);
+        const { data: fresh } = await supabase
+          .from('announcements').select('*')
+          .eq('university_domain', domain)
+          .order('published_at', { ascending: false }).limit(30);
+        setAnnouncements(fresh || []);
+      }
     } catch (err: any) {
-      toast.error('Could not fetch feed. Please try again later.');
+      // Swallow — Edge Function not deployed is not a user-facing error
+      console.warn('fetch-uni-feed error:', err?.message);
     }
     setFetchingFeed(false);
   };
@@ -185,14 +201,16 @@ export default function BulletinPage() {
   const addSession = async () => {
     if (!newTitle.trim() || !newStart || !user || !newTeamId) return;
     setSaving(true);
+    // FIX: removed notes and session_type — not in team_sessions schema
+    // description maps to newNotes, created_by added for RLS
     const { data, error } = await supabase.from('team_sessions').insert({
       team_id: newTeamId,
+      created_by: user.id,
       title: newTitle.trim(),
       start_time: new Date(newStart).toISOString(),
       end_time: new Date(newStart).toISOString(),
       location: newLocation || null,
-      notes: newNotes || null,
-      session_type: newType,
+      description: newNotes || null,
     }).select('*, teams(name, emoji)').single();
 
     if (error) { toast.error('Could not create session. Please try again.'); setSaving(false); return; }
@@ -307,10 +325,9 @@ export default function BulletinPage() {
                         <div className="flex items-center gap-2 mb-0.5">
                           {s.teams?.emoji && <span className="text-base">{s.teams.emoji}</span>}
                           <p className="text-xs text-primary font-medium">{s.teams?.name}</p>
-                          {s.session_type && <span className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full capitalize">{s.session_type}</span>}
                         </div>
                         <h3 className="font-semibold text-sm truncate">{s.title}</h3>
-                        {s.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.notes}</p>}
+                        {s.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.description}</p>}
                       </div>
                       <button onClick={() => handleRsvp(s.id)}
                         className={cn('shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
@@ -362,7 +379,10 @@ export default function BulletinPage() {
                     <div className="text-center py-16">
                       <GraduationCap className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                       <p className="text-muted-foreground text-sm">No announcements yet</p>
-                      <button onClick={() => fetchUniFeed(userDomain)} className="text-xs text-primary font-medium mt-2">Fetch now</button>
+                      <button onClick={() => fetchUniFeed(userDomain)}
+                        className="text-xs text-primary font-medium mt-2">
+                        Fetch now
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -375,7 +395,11 @@ export default function BulletinPage() {
                                   a.source === 'news' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400')}>
                                   {a.source_label || a.source}
                                 </span>
-                                {a.published_at && <span className="text-[10px] text-muted-foreground">{format(new Date(a.published_at), 'MMM d')}</span>}
+                                {a.published_at && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {format(new Date(a.published_at), 'MMM d')}
+                                  </span>
+                                )}
                               </div>
                               <h3 className="font-semibold text-sm leading-snug mb-1">{a.title}</h3>
                               {a.description && (
