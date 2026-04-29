@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -17,15 +17,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 1. Get session first — this is the source of truth on page load
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      initialized.current = true;
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // 2. Listen for changes AFTER initial session is resolved
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Skip the first fire if getSession hasn't resolved yet
+      if (!initialized.current) return;
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -53,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
   };
 
   return (
