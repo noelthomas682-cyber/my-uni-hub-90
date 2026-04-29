@@ -260,7 +260,6 @@ export default function SocialPage() {
   const [joinInput, setJoinInput] = useState('');
   const [joining, setJoining] = useState(false);
   const [showJoinScanner, setShowJoinScanner] = useState(false);
-  // pendingGroupChatTeam stores { team, navigateAfter: boolean }
   const [pendingGroupChatTeam, setPendingGroupChatTeam] = useState<{ team: any; navigateAfter: boolean } | null>(null);
 
   const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
@@ -281,8 +280,8 @@ export default function SocialPage() {
       supabase.from('contacts')
         .select('contact_id, profiles(*)')
         .eq('user_id', user.id)
-        .then(({ data, error }) => {
-          if (error && !data) setError('Could not load contacts.');
+        .then(({ data }) => {
+          // Never show error for contacts — empty is valid
           setContacts(data?.map((d: any) => d.profiles).filter(Boolean) || []);
           setLoading(false);
         });
@@ -377,7 +376,6 @@ export default function SocialPage() {
     setTeamName(''); setTeamSport(''); setTeamEmoji('🏆');
     setShowCreateTeam(false);
     setCreatingTeam(false);
-    // Show group chat prompt, then navigate to team hub after
     setPendingGroupChatTeam({ team: newTeam, navigateAfter: true });
   };
 
