@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { format, isToday, isPast, differenceInDays } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw, CheckSquare } from 'lucide-react';
+import { Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw, CheckSquare, Bell, X, Check, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CalendarEvent {
@@ -25,6 +25,20 @@ interface Task {
   is_complete: boolean;
   priority: string | null;
   category: string | null;
+}
+
+interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  is_read: boolean;
+  created_at: string;
+  sender_id: string | null;
+  related_task_id: string | null;
+  related_team_id: string | null;
+  related_event_id: string | null;
+  sender?: { full_name: string | null; email: string | null };
 }
 
 const EVENT_TYPE_COLOURS: Record<string, string> = {
@@ -101,6 +115,28 @@ function getTaskColour(status: string) {
   }
 }
 
+function getNotificationIcon(type: string) {
+  switch (type) {
+    case 'activity_request': return '🏃';
+    case 'team_invite': return '🏆';
+    case 'deadline_reminder': return '📚';
+    case 'session_invite': return '📅';
+    case 'contact_request': return '👤';
+    case 'class_reminder': return '🔔';
+    default: return '💬';
+  }
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 function ErrorCard({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="glass-card rounded-2xl p-4 flex items-center gap-3 border border-red-500/20">
@@ -129,7 +165,15 @@ export default function HomePage() {
   const [nightMode, setNightMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lmsConnected, setLmsConnected] = useState<boolean | null>(null);
+
+  // Notifications
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
   const today = new Date();
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const loadData = () => {
     if (!user) return;
@@ -156,9 +200,7 @@ export default function HomePage() {
     supabase.from('lms_connections')
       .select('is_connected')
       .eq('user_id', user.id).maybeSingle()
-      .then(({ data }) => {
-        setLmsConnected(data?.is_connected === true);
-      });
+      .then(({ data }) => { setLmsConnected(data?.is_connected === true); });
 
     supabase.from('calendar_events').select('*')
       .eq('user_id', user.id)
@@ -206,7 +248,91 @@ export default function HomePage() {
       });
   };
 
+  const loadNotifications = async () => {
+    if (!user) return;
+    setLoadingNotifications(true);
+    const { data } = await supabase
+      .from('notifications')
+      .select('*, sender:profiles!notifications_sender_id_fkey(full_name, email)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setNotifications(data || []);
+    setLoadingNotifications(false);
+  };
+
+  const markAllRead = async () => {
+    if (!user) return;
+    await supabase.from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', user.id)
+      .eq('is_read', false);
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  };
+
+  const markRead = async (id: string) => {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+  };
+
+  const handleContactRequest = async (notif: Notification, accept: boolean) => {
+    if (!notif.sender_id || !user) return;
+    if (accept) {
+      const { data: existing } = await supabase.from('contacts')
+        .select('id').eq('user_id', user.id).eq('contact_id', notif.sender_id).maybeSingle();
+      if (!existing) {
+        await supabase.from('contacts').insert([
+          { user_id: user.id, contact_id: notif.sender_id },
+          { user_id: notif.sender_id, contact_id: user.id },
+        ]);
+      }
+      await supabase.from('contact_requests')
+        .update({ status: 'accepted' })
+        .eq('sender_id', notif.sender_id)
+        .eq('receiver_id', user.id);
+      toast.success('Contact added!');
+    } else {
+      await supabase.from('contact_requests')
+        .update({ status: 'declined' })
+        .eq('sender_id', notif.sender_id)
+        .eq('receiver_id', user.id);
+      toast.success('Request declined');
+    }
+    await markRead(notif.id);
+    setNotifications(prev => prev.filter(n => n.id !== notif.id));
+  };
+
   useEffect(() => { loadData(); }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadNotifications();
+    // Realtime subscription for new notifications
+    const channel = supabase
+      .channel('notifications')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        setNotifications(prev => [payload.new as Notification, ...prev]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  // Close drawer on outside click
+  useEffect(() => {
+    if (!showNotifications) return;
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNotifications]);
 
   const toggleTaskComplete = async (task: Task) => {
     if (!task.is_complete) {
@@ -252,11 +378,96 @@ export default function HomePage() {
 
   const todayDeadlines = visibleTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
   const overdueTasks = visibleTasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
-
   const showLmsPrompt = lmsConnected === false && !loading && events.length === 0;
 
   return (
     <div className="pb-28 animate-fade-in bg-background min-h-screen">
+
+      {/* ── Notification Drawer ── */}
+      {showNotifications && (
+        <div className="fixed inset-0 z-50 bg-black/60" >
+          <div ref={notifRef} className="absolute right-0 top-0 h-full w-full max-w-sm bg-[#0a0a0a] border-l border-white/5 flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-12 pb-4 border-b border-white/5">
+              <p className="font-heading font-bold text-base">Notifications</p>
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <button onClick={markAllRead} className="text-xs text-primary font-medium">
+                    Mark all read
+                  </button>
+                )}
+                <button onClick={() => setShowNotifications(false)}
+                  className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+                  <X className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {loadingNotifications ? (
+                <div className="space-y-2 p-4">
+                  {[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3">
+                  <Bell className="w-10 h-10 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No notifications yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {notifications.map(notif => (
+                    <div key={notif.id}
+                      className={cn('px-5 py-4 transition-colors', !notif.is_read && 'bg-primary/5')}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl shrink-0 mt-0.5">{getNotificationIcon(notif.notification_type)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-sm text-white leading-tight">{notif.title}</p>
+                            <span className="text-[10px] text-white/30 shrink-0">{timeAgo(notif.created_at)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{notif.body}</p>
+
+                          {/* Contact request actions */}
+                          {notif.notification_type === 'contact_request' && !notif.is_read && (
+                            <div className="flex gap-2 mt-2">
+                              <button onClick={() => handleContactRequest(notif, true)}
+                                className="flex items-center gap-1 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-semibold">
+                                <Check className="w-3 h-3" />Accept
+                              </button>
+                              <button onClick={() => handleContactRequest(notif, false)}
+                                className="flex items-center gap-1 bg-secondary text-muted-foreground px-3 py-1.5 rounded-lg text-xs font-semibold">
+                                <X className="w-3 h-3" />Decline
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Team invite action */}
+                          {notif.notification_type === 'team_invite' && !notif.is_read && notif.related_team_id && (
+                            <button onClick={() => { navigate(`/team/${notif.related_team_id}`); markRead(notif.id); setShowNotifications(false); }}
+                              className="mt-2 text-xs text-primary font-semibold">
+                              View Team →
+                            </button>
+                          )}
+
+                          {/* Deadline/class reminder action */}
+                          {(notif.notification_type === 'deadline_reminder' || notif.notification_type === 'class_reminder') && (
+                            <button onClick={() => { navigate('/plan'); markRead(notif.id); setShowNotifications(false); }}
+                              className="mt-2 text-xs text-primary font-semibold">
+                              View in Plan →
+                            </button>
+                          )}
+                        </div>
+                        {!notif.is_read && (
+                          <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Top Bar ── */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3">
@@ -272,6 +483,14 @@ export default function HomePage() {
           <button onClick={() => navigate('/plan')}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center">
             <Plus className="w-4 h-4 text-foreground" />
+          </button>
+          <button
+            onClick={() => { setShowNotifications(true); markAllRead(); }}
+            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
+            <Bell className="w-4 h-4 text-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+            )}
           </button>
         </div>
       </div>
