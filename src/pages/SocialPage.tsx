@@ -305,6 +305,27 @@ export default function SocialPage() {
 
   useEffect(() => { loadTab(); }, [user, activeTab]);
 
+  // Realtime subscription — auto-refresh contacts when a new contact row is inserted
+  // This handles the case where a contact request is accepted from the notification drawer
+  useEffect(() => {
+    if (!user || activeTab !== 'contacts') return;
+
+    const channel = supabase
+      .channel('contacts-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'contacts',
+        filter: `user_id=eq.${user.id}`,
+      }, () => {
+        // Reload contacts when a new one is added
+        loadTab();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, activeTab]);
+
   // Search users by name
   useEffect(() => {
     if (!searchQuery.trim() || !user) {
