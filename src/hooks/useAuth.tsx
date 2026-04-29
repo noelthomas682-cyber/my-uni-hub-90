@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, useRef } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -17,21 +17,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const initialized = useRef(false);
 
   useEffect(() => {
-    // 1. Get session first — this is the source of truth on page load
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Listen for ALL auth changes (sign in, sign out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-      initialized.current = true;
     });
 
-    // 2. Listen for changes AFTER initial session is resolved
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      // Skip the first fire if getSession hasn't resolved yet
-      if (!initialized.current) return;
+    // Get session immediately on mount for page refresh
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
