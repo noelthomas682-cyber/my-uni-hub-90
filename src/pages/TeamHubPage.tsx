@@ -424,7 +424,7 @@ export default function TeamHubPage() {
       <div className="grid grid-cols-2 gap-2 mb-4">
         {conversationId && (
           <button
-            onClick={() => navigate('/chat')}
+            onClick={() => navigate('/chat', { state: { conversationId } })}
             className="glass-card rounded-2xl p-4 flex items-center gap-3 hover:bg-white/5 transition-colors">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <MessageCircle className="w-4 h-4 text-primary" />
