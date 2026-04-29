@@ -6,7 +6,35 @@ import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type BulletinTab = 'university' | 'sessions';
+type AnnouncementFilter = 'all' | 'news' | 'events';
+
+interface TeamSession {
+  id: string;
+  title: string;
+  session_date: string;
+  location: string | null;
+  notes: string | null;
+  teams: { name: string; emoji: string } | null;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  description: string | null;
+  source: string;
+  source_label: string | null;
+  published_at: string | null;
+  url: string | null;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const SESSION_TYPES = ['training', 'match', 'practice', 'trip', 'meeting', 'social', 'other'];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
@@ -22,66 +50,89 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => vo
   );
 }
 
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function BulletinPage() {
   const { user } = useAuth();
+
+  // ── Tab state ─────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<BulletinTab>('university');
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [rsvps, setRsvps] = useState<Record<string, string>>({});
-  const [captainTeams, setCaptainTeams] = useState<any[]>([]);
+
+  // ── University tab state ──────────────────────────────────────────────────
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementFilter, setAnnouncementFilter] = useState<AnnouncementFilter>('all');
   const [userDomain, setUserDomain] = useState<string | null>(null);
   const [uniName, setUniName] = useState<string>('Your University');
-  const [loading, setLoading] = useState(true);
   const [domainLoading, setDomainLoading] = useState(true);
   const [fetchingFeed, setFetchingFeed] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // ── Sessions tab state ────────────────────────────────────────────────────
+  const [sessions, setSessions] = useState<TeamSession[]>([]);
+  const [rsvps, setRsvps] = useState<Record<string, string>>({});
+  const [captainTeams, setCaptainTeams] = useState<any[]>([]);
+
+  // ── Add session form state ────────────────────────────────────────────────
   const [showAddSession, setShowAddSession] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newStart, setNewStart] = useState('');
+  const [newDate, setNewDate] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [newTeamId, setNewTeamId] = useState('');
   const [newType, setNewType] = useState('training');
   const [saving, setSaving] = useState(false);
-  const [announcementFilter, setAnnouncementFilter] = useState<'all' | 'news' | 'events'>('all');
+
+  // ── Shared state ──────────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ── Initialisation: load captain teams + user domain ─────────────────────
 
   useEffect(() => {
     if (!user) return;
 
-    supabase.from('team_members')
+    // Load teams where user is captain (for session creation)
+    supabase
+      .from('team_members')
       .select('team_id, role')
       .eq('user_id', user.id)
       .eq('role', 'captain')
       .then(async ({ data: memberships }) => {
         if (!memberships || memberships.length === 0) return;
         const teamIds = memberships.map((m: any) => m.team_id);
-        const { data: teamsData } = await supabase.from('teams').select('id, name, emoji').in('id', teamIds);
+        const { data: teamsData } = await supabase
+          .from('teams')
+          .select('id, name, emoji')
+          .in('id', teamIds);
         const teams = teamsData || [];
         setCaptainTeams(teams);
         if (teams.length > 0) setNewTeamId(teams[0].id);
       });
 
-    supabase.from('profiles')
+    // Determine university domain from LMS connection or profile
+    supabase
+      .from('profiles')
       .select('university')
       .eq('id', user.id)
       .single()
       .then(async ({ data: profile, error }) => {
         if (error || !profile) { setDomainLoading(false); return; }
 
+        // Derive domain from university field
         if (profile.university) {
-          let domain: string;
-          if (profile.university.includes('.')) {
-            domain = profile.university.toLowerCase();
-          } else {
-            domain = profile.university.toLowerCase().replace(/\s+/g, '') + '.ac.uk';
-          }
+          const domain = profile.university.includes('.')
+            ? profile.university.toLowerCase()
+            : profile.university.toLowerCase().replace(/\s+/g, '') + '.ac.uk';
           setUserDomain(domain);
-          setUniName('University of ' + profile.university.charAt(0).toUpperCase() + profile.university.slice(1).split('.')[0]);
+          const displayName = profile.university.charAt(0).toUpperCase() + profile.university.slice(1).split('.')[0];
+          setUniName('University of ' + displayName);
         }
 
+        // Override with LMS connection data if available (more accurate)
         const { data: lmsConn } = await supabase
-          .from('lms_connections').select('email_domain, lms_name')
-          .eq('user_id', user.id).maybeSingle();
+          .from('lms_connections')
+          .select('email_domain, lms_name')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
         if (lmsConn?.email_domain) {
           setUserDomain(lmsConn.email_domain);
@@ -94,67 +145,95 @@ export default function BulletinPage() {
       });
   }, [user]);
 
+  // ── Tab-specific data loading ─────────────────────────────────────────────
+
   useEffect(() => {
     if (!user) return;
     setError(null);
 
     if (activeTab === 'sessions') {
-      setLoading(true);
-      supabase.from('team_members').select('team_id').eq('user_id', user.id)
-        .then(async ({ data: memberships, error: membError }) => {
-          if (membError) { setError('Could not load sessions.'); setLoading(false); return; }
-          const teamIds = (memberships || []).map((m: any) => m.team_id);
-          if (teamIds.length === 0) { setSessions([]); setLoading(false); return; }
-
-          const [sessRes, rsvpRes] = await Promise.all([
-            supabase.from('team_sessions')
-              .select('*, teams(name, emoji)')
-              .in('team_id', teamIds)
-              .gte('start_time', new Date().toISOString())
-              .order('start_time').limit(20),
-            supabase.from('session_rsvps').select('*').eq('user_id', user.id),
-          ]);
-
-          if (sessRes.error) { setError('Could not load sessions.'); setLoading(false); return; }
-          setSessions(sessRes.data || []);
-          const map: Record<string, string> = {};
-          (rsvpRes.data || []).forEach((r: any) => { map[r.session_id] = r.status; });
-          setRsvps(map);
-          setLoading(false);
-        });
-
+      loadSessions();
     } else if (activeTab === 'university') {
+      // Wait for domain to resolve before loading announcements
       if (domainLoading) return;
       if (!userDomain) { setLoading(false); return; }
       loadAnnouncements(userDomain);
     }
   }, [user, activeTab, userDomain, domainLoading]);
 
+  // ── Data fetching ─────────────────────────────────────────────────────────
+
+  const loadSessions = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    const { data: memberships, error: membError } = await supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('user_id', user.id);
+
+    if (membError) { setError('Could not load sessions.'); setLoading(false); return; }
+
+    const teamIds = (memberships || []).map((m: any) => m.team_id);
+    if (teamIds.length === 0) { setSessions([]); setLoading(false); return; }
+
+    // Fetch upcoming sessions and user's RSVPs in parallel
+    const [sessRes, rsvpRes] = await Promise.all([
+      supabase
+        .from('team_sessions')
+        .select('*, teams(name, emoji)')
+        .in('team_id', teamIds)
+        .gte('session_date', new Date().toISOString())  // ✅ correct column name
+        .order('session_date')
+        .limit(20),
+      supabase
+        .from('session_rsvps')
+        .select('*')
+        .eq('user_id', user.id),
+    ]);
+
+    if (sessRes.error) { setError('Could not load sessions.'); setLoading(false); return; }
+
+    setSessions(sessRes.data as TeamSession[] || []);
+
+    // Build RSVP lookup map: session_id → status
+    const rsvpMap: Record<string, string> = {};
+    (rsvpRes.data || []).forEach((r: any) => { rsvpMap[r.session_id] = r.status; });
+    setRsvps(rsvpMap);
+
+    setLoading(false);
+  };
+
   const loadAnnouncements = async (domain: string) => {
     setLoading(true);
     setError(null);
+
     const { data, error } = await supabase
-      .from('announcements').select('*')
+      .from('announcements')
+      .select('*')
       .eq('university_domain', domain)
-      .order('published_at', { ascending: false }).limit(30);
+      .order('published_at', { ascending: false })
+      .limit(30);
+
     if (error) { setError('Could not load announcements.'); setLoading(false); return; }
-    setAnnouncements(data || []);
+
+    setAnnouncements(data as Announcement[] || []);
     setLoading(false);
-    // FIX: only attempt feed fetch if we have data gap — wrapped in try/catch
-    // so a missing Edge Function doesn't crash the page
+
+    // If no cached announcements, try fetching fresh from Edge Function
     if (!data || data.length === 0) fetchUniFeed(domain);
   };
 
-  // FIX: fetch-uni-feed is an Edge Function that may not be deployed yet.
-  // Wrapped to fail silently so the rest of the page works fine.
+  // Fetch fresh university news via Edge Function — fails gracefully if not deployed
   const fetchUniFeed = async (domain: string) => {
     if (!domain) return;
     setFetchingFeed(true);
+
     try {
       const { data, error } = await supabase.functions.invoke('fetch-uni-feed', { body: { domain } });
 
-      // Edge Function not deployed yet — fail gracefully
       if (error) {
+        // Edge Function not deployed yet — silent fail
         console.warn('fetch-uni-feed not available:', error.message);
         setFetchingFeed(false);
         return;
@@ -169,29 +248,44 @@ export default function BulletinPage() {
       const count = (data?.news ?? 0) + (data?.events ?? 0);
       if (count > 0) {
         toast.success(`Feed updated: ${count} items`);
+        // Reload announcements with fresh data
         const { data: fresh } = await supabase
-          .from('announcements').select('*')
+          .from('announcements')
+          .select('*')
           .eq('university_domain', domain)
-          .order('published_at', { ascending: false }).limit(30);
-        setAnnouncements(fresh || []);
+          .order('published_at', { ascending: false })
+          .limit(30);
+        setAnnouncements(fresh as Announcement[] || []);
       }
     } catch (err: any) {
-      // Swallow — Edge Function not deployed is not a user-facing error
+      // Swallow network/deploy errors silently
       console.warn('fetch-uni-feed error:', err?.message);
     }
+
     setFetchingFeed(false);
   };
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
   const handleRsvp = async (sessionId: string) => {
     if (!user) return;
-    const current = rsvps[sessionId];
-    if (current) {
-      const { error } = await supabase.from('session_rsvps').delete().eq('session_id', sessionId).eq('user_id', user.id);
+    const isGoing = !!rsvps[sessionId];
+
+    if (isGoing) {
+      // Remove RSVP
+      const { error } = await supabase
+        .from('session_rsvps')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
       if (error) { toast.error('Could not update RSVP'); return; }
       setRsvps(prev => { const n = { ...prev }; delete n[sessionId]; return n; });
       toast.success('RSVP removed');
     } else {
-      const { error } = await supabase.from('session_rsvps').insert({ session_id: sessionId, user_id: user.id, status: 'going' });
+      // Add RSVP
+      const { error } = await supabase
+        .from('session_rsvps')
+        .insert({ session_id: sessionId, user_id: user.id, status: 'going' });
       if (error) { toast.error('Could not RSVP'); return; }
       setRsvps(prev => ({ ...prev, [sessionId]: 'going' }));
       toast.success('You are going!');
@@ -199,45 +293,62 @@ export default function BulletinPage() {
   };
 
   const addSession = async () => {
-    if (!newTitle.trim() || !newStart || !user || !newTeamId) return;
+    if (!newTitle.trim() || !newDate || !user || !newTeamId) return;
     setSaving(true);
-    // FIX: removed notes and session_type — not in team_sessions schema
-    // description maps to newNotes, created_by added for RLS
-    const { data, error } = await supabase.from('team_sessions').insert({
-      team_id: newTeamId,
-      created_by: user.id,
-      title: newTitle.trim(),
-      start_time: new Date(newStart).toISOString(),
-      end_time: new Date(newStart).toISOString(),
-      location: newLocation || null,
-      description: newNotes || null,
-    }).select('*, teams(name, emoji)').single();
+
+    const { data, error } = await supabase
+      .from('team_sessions')
+      .insert({
+        team_id: newTeamId,
+        created_by: user.id,
+        title: newTitle.trim(),
+        session_date: new Date(newDate).toISOString(),  // ✅ correct column name
+        location: newLocation.trim() || null,
+        notes: newNotes.trim() || null,                  // ✅ correct column name
+      })
+      .select('*, teams(name, emoji)')
+      .single();
 
     if (error) { toast.error('Could not create session. Please try again.'); setSaving(false); return; }
-    setSessions(prev => [data, ...prev].sort((a, b) =>
-      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-    ));
-    setNewTitle(''); setNewStart(''); setNewLocation(''); setNewNotes('');
+
+    // Add to list, sorted by date
+    setSessions(prev =>
+      [...prev, data as TeamSession].sort(
+        (a, b) => new Date(a.session_date).getTime() - new Date(b.session_date).getTime()
+      )
+    );
+
+    // Reset form
+    setNewTitle('');
+    setNewDate('');
+    setNewLocation('');
+    setNewNotes('');
     setShowAddSession(false);
-    toast.success('Session posted to your team');
     setSaving(false);
+    toast.success('Session posted to your team');
   };
 
-  const SESSION_TYPES = ['training', 'match', 'practice', 'trip', 'meeting', 'social', 'other'];
+  // ── Derived values ────────────────────────────────────────────────────────
+
   const filteredAnnouncements = announcements.filter(a =>
     announcementFilter === 'all' ? true : a.source === announcementFilter
   );
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="px-5 pt-14 animate-fade-in pb-24">
       <h1 className="font-heading text-2xl font-bold mb-5">Bulletin</h1>
 
+      {/* ── Tab Switcher ── */}
       <div className="flex gap-2 mb-5">
         {[
           { key: 'university', label: 'University', Icon: GraduationCap },
           { key: 'sessions', label: 'Sessions', Icon: Megaphone },
         ].map(({ key, label, Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key as BulletinTab)}
+          <button
+            key={key}
+            onClick={() => setActiveTab(key as BulletinTab)}
             className={cn(
               'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all shrink-0',
               activeTab === key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
@@ -247,73 +358,123 @@ export default function BulletinPage() {
         ))}
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={() => activeTab === 'sessions'
-        ? (setError(null) as any)
-        : userDomain && loadAnnouncements(userDomain)} />}
+      {/* ── Error Banner ── */}
+      {error && (
+        <ErrorBanner
+          message={error}
+          onRetry={activeTab === 'sessions'
+            ? loadSessions
+            : userDomain ? () => loadAnnouncements(userDomain) : undefined}
+        />
+      )}
 
+      {/* ── Loading Skeleton ── */}
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-24" />)}
         </div>
       ) : (
         <>
+
+          {/* ══ SESSIONS TAB ══ */}
           {activeTab === 'sessions' && (
             <div className="space-y-3">
+
+              {/* Add session button/form — captain only */}
               {captainTeams.length > 0 && (
                 showAddSession ? (
                   <div className="glass-card rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold text-sm">Post a Session</p>
-                      <button onClick={() => setShowAddSession(false)}><X className="w-4 h-4 text-muted-foreground" /></button>
+                      <button onClick={() => setShowAddSession(false)}>
+                        <X className="w-4 h-4 text-muted-foreground" />
+                      </button>
                     </div>
+
+                    {/* Team selector — only if captain of multiple teams */}
                     {captainTeams.length > 1 && (
-                      <select value={newTeamId} onChange={e => setNewTeamId(e.target.value)}
+                      <select
+                        value={newTeamId}
+                        onChange={e => setNewTeamId(e.target.value)}
                         className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
                         {captainTeams.map(t => <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>)}
                       </select>
                     )}
+
+                    {/* Session type pills */}
                     <div className="flex flex-wrap gap-2">
                       {SESSION_TYPES.map(type => (
-                        <button key={type} onClick={() => setNewType(type)}
-                          className={cn('px-3 py-1 rounded-full text-xs font-medium capitalize transition-all',
-                            newType === type ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground')}>
+                        <button
+                          key={type}
+                          onClick={() => setNewType(type)}
+                          className={cn(
+                            'px-3 py-1 rounded-full text-xs font-medium capitalize transition-all',
+                            newType === type ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                          )}>
                           {type}
                         </button>
                       ))}
                     </div>
-                    <input type="text" placeholder="Session title" value={newTitle}
+
+                    <input
+                      type="text"
+                      placeholder="Session title"
+                      value={newTitle}
                       onChange={e => setNewTitle(e.target.value)}
                       className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                    <input type="datetime-local" value={newStart} onChange={e => setNewStart(e.target.value)}
+
+                    <input
+                      type="datetime-local"
+                      value={newDate}
+                      onChange={e => setNewDate(e.target.value)}
                       className="w-full bg-secondary/60 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                    <input type="text" placeholder="Location (optional)" value={newLocation}
+
+                    <input
+                      type="text"
+                      placeholder="Location (optional)"
+                      value={newLocation}
                       onChange={e => setNewLocation(e.target.value)}
                       className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
-                    <textarea placeholder="Notes for your team (optional)" value={newNotes}
-                      onChange={e => setNewNotes(e.target.value)} rows={2}
+
+                    <textarea
+                      placeholder="Notes for your team (optional)"
+                      value={newNotes}
+                      onChange={e => setNewNotes(e.target.value)}
+                      rows={2}
                       className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+
                     <div className="flex gap-2">
-                      <button onClick={addSession} disabled={saving || !newTitle.trim() || !newStart}
+                      <button
+                        onClick={addSession}
+                        disabled={saving || !newTitle.trim() || !newDate}
                         className="flex-1 bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold disabled:opacity-50">
                         {saving ? 'Posting...' : 'Post to team'}
                       </button>
-                      <button onClick={() => setShowAddSession(false)}
-                        className="px-4 bg-secondary text-muted-foreground rounded-xl py-2 text-sm">Cancel</button>
+                      <button
+                        onClick={() => setShowAddSession(false)}
+                        className="px-4 bg-secondary text-muted-foreground rounded-xl py-2 text-sm">
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setShowAddSession(true)}
+                  <button
+                    onClick={() => setShowAddSession(true)}
                     className="w-full glass-card rounded-2xl p-4 flex items-center justify-center gap-2 text-sm font-semibold text-primary border border-dashed border-primary/30 hover:bg-primary/5 transition-colors">
                     <Plus className="w-4 h-4" />Post a session
                   </button>
                 )
               )}
+
+              {/* Sessions list */}
               {sessions.length === 0 ? (
                 <div className="text-center py-10">
                   <Megaphone className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground text-sm">No upcoming sessions</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {captainTeams.length > 0 ? 'Post a session for your team above' : 'Join a team to see sessions here'}
+                    {captainTeams.length > 0
+                      ? 'Post a session for your team above'
+                      : 'Join a team to see sessions here'}
                   </p>
                 </div>
               ) : sessions.map(s => {
@@ -327,17 +488,30 @@ export default function BulletinPage() {
                           <p className="text-xs text-primary font-medium">{s.teams?.name}</p>
                         </div>
                         <h3 className="font-semibold text-sm truncate">{s.title}</h3>
-                        {s.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.description}</p>}
+                        {s.notes && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.notes}</p>
+                        )}
                       </div>
-                      <button onClick={() => handleRsvp(s.id)}
-                        className={cn('shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-                          going ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground')}>
-                        {going && <Check className="w-3 h-3" />}{going ? 'Going' : 'RSVP'}
+                      <button
+                        onClick={() => handleRsvp(s.id)}
+                        className={cn(
+                          'shrink-0 ml-3 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+                          going ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                        )}>
+                        {going && <Check className="w-3 h-3" />}
+                        {going ? 'Going' : 'RSVP'}
                       </button>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(s.start_time), 'MMM d · h:mm a')}</span>
-                      {s.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{s.location}</span>}
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {format(new Date(s.session_date), 'MMM d · h:mm a')}
+                      </span>
+                      {s.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />{s.location}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -345,41 +519,57 @@ export default function BulletinPage() {
             </div>
           )}
 
+          {/* ══ UNIVERSITY TAB ══ */}
           {activeTab === 'university' && (
             <div className="space-y-4">
               {!userDomain ? (
+                // User hasn't connected their university yet
                 <div className="text-center py-16">
                   <GraduationCap className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground text-sm">Connect your university first</p>
-                  <p className="text-xs text-muted-foreground mt-1">Go to Me → Connect LMS to link your university</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Go to Me → Connect LMS to link your university
+                  </p>
                 </div>
               ) : (
                 <>
+                  {/* University header + refresh */}
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-sm">{uniName}</p>
                       <p className="text-xs text-muted-foreground">Latest news and events</p>
                     </div>
-                    <button onClick={() => fetchUniFeed(userDomain)} disabled={fetchingFeed}
+                    <button
+                      onClick={() => fetchUniFeed(userDomain)}
+                      disabled={fetchingFeed}
                       className="flex items-center gap-1.5 text-xs text-primary font-medium">
                       <RefreshCw className={cn('w-3.5 h-3.5', fetchingFeed && 'animate-spin')} />
                       {fetchingFeed ? 'Updating...' : 'Refresh'}
                     </button>
                   </div>
+
+                  {/* Filter pills */}
                   <div className="flex gap-2">
                     {(['all', 'news', 'events'] as const).map(f => (
-                      <button key={f} onClick={() => setAnnouncementFilter(f)}
-                        className={cn('px-3 py-1 rounded-full text-xs font-medium capitalize transition-all',
-                          announcementFilter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground')}>
+                      <button
+                        key={f}
+                        onClick={() => setAnnouncementFilter(f)}
+                        className={cn(
+                          'px-3 py-1 rounded-full text-xs font-medium capitalize transition-all',
+                          announcementFilter === f ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                        )}>
                         {f}
                       </button>
                     ))}
                   </div>
+
+                  {/* Announcements list */}
                   {filteredAnnouncements.length === 0 ? (
                     <div className="text-center py-16">
                       <GraduationCap className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                       <p className="text-muted-foreground text-sm">No announcements yet</p>
-                      <button onClick={() => fetchUniFeed(userDomain)}
+                      <button
+                        onClick={() => fetchUniFeed(userDomain)}
                         className="text-xs text-primary font-medium mt-2">
                         Fetch now
                       </button>
@@ -391,8 +581,12 @@ export default function BulletinPage() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium capitalize',
-                                  a.source === 'news' ? 'bg-blue-500/10 text-blue-400' : 'bg-purple-500/10 text-purple-400')}>
+                                <span className={cn(
+                                  'text-[10px] px-2 py-0.5 rounded-full font-medium capitalize',
+                                  a.source === 'news'
+                                    ? 'bg-blue-500/10 text-blue-400'
+                                    : 'bg-purple-500/10 text-purple-400'
+                                )}>
                                   {a.source_label || a.source}
                                 </span>
                                 {a.published_at && (
@@ -404,12 +598,19 @@ export default function BulletinPage() {
                               <h3 className="font-semibold text-sm leading-snug mb-1">{a.title}</h3>
                               {a.description && (
                                 <p className="text-xs text-muted-foreground line-clamp-2">
-                                  {a.description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()}
+                                  {a.description
+                                    .replace(/<[^>]*>/g, '')
+                                    .replace(/&nbsp;/g, ' ')
+                                    .replace(/&amp;/g, '&')
+                                    .replace(/&lt;/g, '<')
+                                    .replace(/&gt;/g, '>')
+                                    .trim()}
                                 </p>
                               )}
                             </div>
                             {a.url && (
-                              <button onClick={() => window.open(a.url, '_blank')}
+                              <button
+                                onClick={() => window.open(a.url!, '_blank')}
                                 className="shrink-0 w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                                 <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                               </button>
@@ -423,6 +624,7 @@ export default function BulletinPage() {
               )}
             </div>
           )}
+
         </>
       )}
     </div>
