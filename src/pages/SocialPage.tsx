@@ -282,7 +282,7 @@ export default function SocialPage() {
         .select('contact_id, profiles(*)')
         .eq('user_id', user.id)
         .then(({ data, error }) => {
-          if (error) setError('Could not load contacts.');
+          if (error && !data) setError('Could not load contacts.');
           setContacts(data?.map((d: any) => d.profiles).filter(Boolean) || []);
           setLoading(false);
         });
