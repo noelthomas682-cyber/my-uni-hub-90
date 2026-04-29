@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Send, Clock, Check, XCircle, AlertTriangle } from 'lucide-react';
+import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Send, Clock, Check, XCircle, AlertTriangle, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
@@ -67,15 +67,7 @@ function QRScanner({ onResult, onClose }: { onResult: (text: string) => void; on
   );
 }
 
-function GroupChatPrompt({
-  teamName,
-  onYes,
-  onNo,
-}: {
-  teamName: string;
-  onYes: () => void;
-  onNo: () => void;
-}) {
+function GroupChatPrompt({ teamName, onYes, onNo }: { teamName: string; onYes: () => void; onNo: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-6">
       <div className="glass-card rounded-2xl p-6 w-full max-w-sm">
@@ -113,7 +105,9 @@ function ActivityRequestSheet({ contact, onClose, onSent }: { contact: any; onCl
     });
     if (error) { toast.error('Could not send request. Please try again.'); setSending(false); return; }
     await supabase.from('notifications').insert({
-      user_id: contact.id, title: 'Activity Request',
+      user_id: contact.id,
+      sender_id: user.id,
+      title: 'Activity Request',
       body: `wants to ${activity?.label.toLowerCase()} with you${note ? `: "${note}"` : ''}`,
       notification_type: 'activity_request',
     });
@@ -262,6 +256,13 @@ export default function SocialPage() {
   const [showJoinScanner, setShowJoinScanner] = useState(false);
   const [pendingGroupChatTeam, setPendingGroupChatTeam] = useState<{ team: any; navigateAfter: boolean } | null>(null);
 
+  // Search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
 
   useEffect(() => {
@@ -281,7 +282,6 @@ export default function SocialPage() {
         .select('contact_id, profiles(*)')
         .eq('user_id', user.id)
         .then(({ data }) => {
-          // Never show error for contacts — empty is valid
           setContacts(data?.map((d: any) => d.profiles).filter(Boolean) || []);
           setLoading(false);
         });
@@ -304,6 +304,62 @@ export default function SocialPage() {
   };
 
   useEffect(() => { loadTab(); }, [user, activeTab]);
+
+  // Search users by name
+  useEffect(() => {
+    if (!searchQuery.trim() || !user) {
+      setSearchResults([]);
+      return;
+    }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, university')
+        .ilike('full_name', `%${searchQuery.trim()}%`)
+        .neq('id', user.id)
+        .limit(10);
+      // Filter out existing contacts
+      const contactIds = new Set(contacts.map((c: any) => c.id));
+      setSearchResults((data || []).filter((p: any) => !contactIds.has(p.id)));
+      setSearching(false);
+    }, 400);
+  }, [searchQuery, contacts, user]);
+
+  const sendContactRequest = async (target: any) => {
+    if (!user) return;
+    // Check if request already sent
+    const { data: existing } = await supabase
+      .from('contact_requests')
+      .select('id, status')
+      .eq('sender_id', user.id)
+      .eq('receiver_id', target.id)
+      .maybeSingle();
+
+    if (existing) {
+      toast.error('Request already sent');
+      return;
+    }
+
+    const { error } = await supabase.from('contact_requests').insert({
+      sender_id: user.id,
+      receiver_id: target.id,
+      status: 'pending',
+    });
+    if (error) { toast.error('Could not send request'); return; }
+
+    await supabase.from('notifications').insert({
+      user_id: target.id,
+      sender_id: user.id,
+      title: 'Contact Request',
+      body: `${profile?.full_name || 'Someone'} wants to add you as a contact`,
+      notification_type: 'contact_request',
+    });
+
+    setSentRequests(prev => new Set([...prev, target.id]));
+    toast.success(`Request sent to ${target.full_name || target.email}!`);
+  };
 
   const regenerateToken = async () => {
     if (!user) return;
@@ -384,11 +440,7 @@ export default function SocialPage() {
     const { team, navigateAfter } = pendingGroupChatTeam;
     const convId = crypto.randomUUID();
     const { error } = await supabase.from('conversations').insert({
-      id: convId,
-      type: 'group',
-      name: team.name,
-      team_id: team.id,
-      created_by: user.id,
+      id: convId, type: 'group', name: team.name, team_id: team.id, created_by: user.id,
     });
     if (error) {
       toast.error('Could not create group chat. You can create it later from the chat page.');
@@ -415,11 +467,7 @@ export default function SocialPage() {
       {showJoinScanner && <QRScanner onResult={(text) => { setShowJoinScanner(false); joinTeamByCode(text); }} onClose={() => setShowJoinScanner(false)} />}
       {showContactScanner && <QRScanner onResult={(text) => { setShowContactScanner(false); addContactByToken(text); }} onClose={() => setShowContactScanner(false)} />}
       {pendingGroupChatTeam && (
-        <GroupChatPrompt
-          teamName={pendingGroupChatTeam.team.name}
-          onYes={createGroupChat}
-          onNo={skipGroupChat}
-        />
+        <GroupChatPrompt teamName={pendingGroupChatTeam.team.name} onYes={createGroupChat} onNo={skipGroupChat} />
       )}
       {requestTarget && <ActivityRequestSheet contact={requestTarget} onClose={() => setRequestTarget(null)} onSent={() => {}} />}
 
@@ -444,6 +492,60 @@ export default function SocialPage() {
           {activeTab === 'contacts' && (
             <div className="space-y-3">
               {user && <IncomingRequests userId={user.id} />}
+
+              {/* ── Search by name ── */}
+              <div className="glass-card rounded-2xl p-4 space-y-3">
+                <p className="font-semibold text-sm">Find by Name</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search students by name..."
+                    className="w-full bg-secondary/60 rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => { setSearchQuery(''); setSearchResults([]); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
+                {searching && (
+                  <p className="text-xs text-muted-foreground text-center">Searching...</p>
+                )}
+                {!searching && searchQuery && searchResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center">No students found</p>
+                )}
+                {searchResults.length > 0 && (
+                  <div className="space-y-2">
+                    {searchResults.map(p => (
+                      <div key={p.id} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <span className="text-primary text-sm font-bold">{(p.full_name || p.email || 'U').charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{p.full_name || p.email}</p>
+                          {p.university && <p className="text-xs text-muted-foreground truncate">{p.university}</p>}
+                        </div>
+                        <button
+                          onClick={() => sendContactRequest(p)}
+                          disabled={sentRequests.has(p.id)}
+                          className={cn('shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors',
+                            sentRequests.has(p.id)
+                              ? 'bg-secondary text-muted-foreground'
+                              : 'bg-primary/10 text-primary hover:bg-primary/20'
+                          )}>
+                          {sentRequests.has(p.id) ? <><Check className="w-3 h-3" />Sent</> : <><UserPlus className="w-3 h-3" />Add</>}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── QR Code ── */}
               <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -491,11 +593,13 @@ export default function SocialPage() {
                   </div>
                 </div>
               </div>
+
+              {/* ── Contacts List ── */}
               {contacts.length === 0 ? (
                 <div className="text-center py-8">
                   <UserPlus className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground text-sm">No contacts yet</p>
-                  <p className="text-xs text-muted-foreground mt-1">Scan a classmate's QR code to add them</p>
+                  <p className="text-xs text-muted-foreground mt-1">Search by name or scan a classmate's QR code</p>
                 </div>
               ) : contacts.map(c => (
                 <div key={c.id} className="glass-card rounded-xl p-4 flex items-center gap-3">
