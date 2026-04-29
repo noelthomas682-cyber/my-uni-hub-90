@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
-import { Moon, Plus, Bell, MessageCircle, Zap, AlertTriangle, RefreshCw, CheckSquare } from 'lucide-react';
+import { Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw, CheckSquare } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CalendarEvent {
@@ -252,9 +252,7 @@ export default function HomePage() {
 
   const todayDeadlines = visibleTasks.filter(t => t.due_date && isToday(new Date(t.due_date)));
   const overdueTasks = visibleTasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
-  const allOverdue = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date)));
 
-  // Only show LMS prompt if not connected and no events today
   const showLmsPrompt = lmsConnected === false && !loading && events.length === 0;
 
   return (
@@ -274,13 +272,6 @@ export default function HomePage() {
           <button onClick={() => navigate('/plan')}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center">
             <Plus className="w-4 h-4 text-foreground" />
-          </button>
-          <button onClick={() => toast('No new notifications')}
-            className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
-            <Bell className="w-4 h-4 text-foreground" />
-            {(todayDeadlines.length > 0 || allOverdue.length > 0) && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-            )}
           </button>
         </div>
       </div>
@@ -403,7 +394,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── LMS Connect Prompt — only if not connected ── */}
+        {/* ── LMS Connect Prompt ── */}
         {showLmsPrompt && (
           <button onClick={() => navigate('/lms-settings')}
             className="w-full rounded-2xl p-4 border border-primary/20 text-left"
@@ -517,14 +508,6 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* ── AI Suggestions ── */}
-        <div>
-          <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold mb-2">Suggestions</p>
-          <div className="glass-card rounded-2xl p-4 text-center">
-            <p className="text-xs text-muted-foreground">AI suggestions coming soon</p>
-          </div>
-        </div>
-
         {/* ── Teams ── */}
         {teams.length > 0 && (
           <div>
@@ -534,7 +517,7 @@ export default function HomePage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               {teams.slice(0, 4).map(team => (
-                <button key={team.id} onClick={() => navigate('/social')}
+                <button key={team.id} onClick={() => navigate(`/team/${team.id}`)}
                   className="glass-card rounded-2xl p-4 text-left hover:bg-white/5 transition-colors">
                   <span className="text-3xl">{team.emoji || '🏆'}</span>
                   <p className="font-bold text-sm text-white mt-2 leading-tight">{team.name}</p>
