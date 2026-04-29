@@ -67,7 +67,15 @@ function QRScanner({ onResult, onClose }: { onResult: (text: string) => void; on
   );
 }
 
-function GroupChatPrompt({ teamName, onYes, onNo }: { teamName: string; onYes: () => void; onNo: () => void }) {
+function GroupChatPrompt({
+  teamName,
+  onYes,
+  onNo,
+}: {
+  teamName: string;
+  onYes: () => void;
+  onNo: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-6">
       <div className="glass-card rounded-2xl p-6 w-full max-w-sm">
@@ -249,11 +257,11 @@ export default function SocialPage() {
   const [teamSport, setTeamSport] = useState('');
   const [teamEmoji, setTeamEmoji] = useState('🏆');
   const [creatingTeam, setCreatingTeam] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState<any>(null);
   const [joinInput, setJoinInput] = useState('');
   const [joining, setJoining] = useState(false);
   const [showJoinScanner, setShowJoinScanner] = useState(false);
-  const [pendingGroupChatTeam, setPendingGroupChatTeam] = useState<any>(null);
+  // pendingGroupChatTeam stores { team, navigateAfter: boolean }
+  const [pendingGroupChatTeam, setPendingGroupChatTeam] = useState<{ team: any; navigateAfter: boolean } | null>(null);
 
   const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
 
@@ -356,9 +364,9 @@ export default function SocialPage() {
     const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
     const { data: team, error } = await supabase.from('teams').insert({
       name: teamName.trim(),
-      description: teamSport || null,
+      sport: teamSport || null,
       emoji: teamEmoji,
-      created_by: user.id,
+      captain_id: user.id,
       invite_code: inviteCode,
     }).select().single();
     if (error) { toast.error('Could not create team. Please try again.'); setCreatingTeam(false); return; }
@@ -369,12 +377,13 @@ export default function SocialPage() {
     setTeamName(''); setTeamSport(''); setTeamEmoji('🏆');
     setShowCreateTeam(false);
     setCreatingTeam(false);
-    setSelectedTeam(newTeam);
-    setPendingGroupChatTeam(newTeam);
+    // Show group chat prompt, then navigate to team hub after
+    setPendingGroupChatTeam({ team: newTeam, navigateAfter: true });
   };
 
-  const createGroupChat = async (team: any) => {
-    if (!user) return;
+  const createGroupChat = async () => {
+    if (!user || !pendingGroupChatTeam) return;
+    const { team, navigateAfter } = pendingGroupChatTeam;
     const convId = crypto.randomUUID();
     const { error } = await supabase.from('conversations').insert({
       id: convId,
@@ -385,17 +394,20 @@ export default function SocialPage() {
     });
     if (error) {
       toast.error('Could not create group chat. You can create it later from the chat page.');
-      setPendingGroupChatTeam(null);
-      return;
+    } else {
+      await supabase.from('conversation_members').insert({ conversation_id: convId, user_id: user.id });
+      toast.success(`Group chat created for ${team.name}!`);
     }
-    await supabase.from('conversation_members').insert({ conversation_id: convId, user_id: user.id });
-    toast.success(`Group chat created for ${team.name}!`);
     setPendingGroupChatTeam(null);
+    if (navigateAfter) navigate(`/team/${team.id}`);
   };
 
-  const skipGroupChat = (team: any) => {
-    setPendingGroupChatTeam(null);
+  const skipGroupChat = () => {
+    if (!pendingGroupChatTeam) return;
+    const { team, navigateAfter } = pendingGroupChatTeam;
     toast.success(`${team.name} created! Share the QR code to add members.`);
+    setPendingGroupChatTeam(null);
+    if (navigateAfter) navigate(`/team/${team.id}`);
   };
 
   const qrValue = profile?.qr_token ? `rute://add/${profile.qr_token}` : '';
@@ -404,7 +416,13 @@ export default function SocialPage() {
     <div className="px-5 pt-14 animate-fade-in pb-24">
       {showJoinScanner && <QRScanner onResult={(text) => { setShowJoinScanner(false); joinTeamByCode(text); }} onClose={() => setShowJoinScanner(false)} />}
       {showContactScanner && <QRScanner onResult={(text) => { setShowContactScanner(false); addContactByToken(text); }} onClose={() => setShowContactScanner(false)} />}
-      {pendingGroupChatTeam && <GroupChatPrompt teamName={pendingGroupChatTeam.name} onYes={() => createGroupChat(pendingGroupChatTeam)} onNo={() => skipGroupChat(pendingGroupChatTeam)} />}
+      {pendingGroupChatTeam && (
+        <GroupChatPrompt
+          teamName={pendingGroupChatTeam.team.name}
+          onYes={createGroupChat}
+          onNo={skipGroupChat}
+        />
+      )}
       {requestTarget && <ActivityRequestSheet contact={requestTarget} onClose={() => setRequestTarget(null)} onSent={() => {}} />}
 
       <h1 className="font-heading text-2xl font-bold mb-5">Social</h1>
