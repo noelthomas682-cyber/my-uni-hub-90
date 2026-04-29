@@ -5,18 +5,33 @@ import { supabase } from '@/integrations/supabase/client';
 import BottomNav from './BottomNav';
 import FeedbackButton from './FeedbackButton';
 
+// Cache onboarding status in memory so it survives re-renders
+const onboardingCache = new Map<string, boolean>();
+
 export default function DashboardLayout() {
   const { user, loading } = useAuth();
-  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
+    user ? (onboardingCache.get(user.id) ?? null) : null
+  );
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('profiles')
+
+    // Already cached — no DB call needed
+    if (onboardingCache.has(user.id)) {
+      setOnboardingComplete(onboardingCache.get(user.id)!);
+      return;
+    }
+
+    supabase
+      .from('profiles')
       .select('onboarding_complete')
       .eq('id', user.id)
       .single()
       .then(({ data }) => {
-        setOnboardingComplete(data?.onboarding_complete === true);
+        const complete = data?.onboarding_complete === true;
+        onboardingCache.set(user.id, complete);
+        setOnboardingComplete(complete);
       });
   }, [user]);
 
