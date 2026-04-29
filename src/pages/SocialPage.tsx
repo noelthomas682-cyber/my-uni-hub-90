@@ -686,7 +686,7 @@ export default function SocialPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{t.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
+                        {t.sport && <p className="text-xs text-muted-foreground">{t.sport}</p>}
                         <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium',
                           t.myRole === 'captain' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
                           {t.myRole === 'captain' ? 'Captain' : 'Member'}
