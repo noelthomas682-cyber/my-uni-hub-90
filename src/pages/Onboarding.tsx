@@ -179,7 +179,6 @@ export default function Onboarding() {
 
       const domain = getDomain(user.email || '');
       if (domain) {
-        // Single query — reads everything needed from registry
         const { data: uni } = await supabase
           .from('university_registry')
           .select('name, domain, news_feed_url, color, lms_type, lms_instance_url, email_system')
@@ -198,17 +197,14 @@ export default function Onboarding() {
             email_system: uni.email_system,
           });
 
-          // Set LMS type from registry — no detect-lms call needed
           if (uni.lms_type && uni.lms_type !== 'unknown') {
             setDetectedLms(uni.lms_type);
           }
 
-          // Set email system from registry
           if (uni.email_system && uni.email_system !== 'unknown') {
             setDetectedEmailSystem(uni.email_system);
           }
 
-          // Set LMS instance URL from registry
           if (uni.lms_instance_url) {
             setLmsInstanceUrl(uni.lms_instance_url);
           }
@@ -307,7 +303,6 @@ export default function Onboarding() {
     navigate('/home', { replace: true });
   };
 
-  // Derive UI from registry data
   const lmsInstructions = LMS_INSTRUCTIONS[detectedLms] || LMS_INSTRUCTIONS.default;
   const scheduleInstructions = SCHEDULE_INSTRUCTIONS[detectedEmailSystem] || SCHEDULE_INSTRUCTIONS.unknown;
   const lmsLabel = detectedLms === 'default' ? 'University LMS'
@@ -436,7 +431,7 @@ export default function Onboarding() {
               )}
             </div>
 
-            {/* Assignments — LMS specific */}
+            {/* Assignments */}
             <div className="glass-card rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
@@ -505,7 +500,7 @@ export default function Onboarding() {
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setStep(1)}>Back</Button>
               <Button className="flex-1" onClick={handleContinueFromCalendars}>
-                {importedSchedule || importedAssignments ? 'Continue' : 'Skip for now'}
+                {importedSchedule || importedAssignments ? 'Continue' : "I'll do this later"}
               </Button>
             </div>
           </div>
