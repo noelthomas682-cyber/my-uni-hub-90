@@ -198,8 +198,18 @@ export default function HomePage() {
 
   const incrementSessionCount = async (currentCount: number) => {
     if (!user) return;
+
+    // Only increment once per browser session — prevents counting page reloads
+    const sessionKey = `rute_session_counted_${user.id}`;
+    if (sessionStorage.getItem(sessionKey)) {
+      setSessionCount(currentCount);
+      return;
+    }
+
     const newCount = currentCount + 1;
     setSessionCount(newCount);
+    sessionStorage.setItem(sessionKey, '1');
+
     await supabase
       .from('profiles')
       .update({ session_count: newCount })
