@@ -95,9 +95,13 @@ export default function Auth() {
 
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      setSubmitting(false);
     } else if (isSignUp) {
       toast({ title: 'Check your email', description: 'We sent you a confirmation link.' });
       navigate('/onboarding');
+    } else {
+      // Sign in success — navigate immediately
+      navigate('/home', { replace: true });
     }
     setSubmitting(false);
   };
