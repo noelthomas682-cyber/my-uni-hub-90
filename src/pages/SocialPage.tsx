@@ -231,6 +231,8 @@ function IncomingRequests({ userId }: { userId: string }) {
   );
 }
 
+const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
+
 export default function SocialPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -263,7 +265,6 @@ export default function SocialPage() {
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
 
   useEffect(() => {
     if (!user) return;
