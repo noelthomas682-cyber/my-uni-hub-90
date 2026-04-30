@@ -3,7 +3,7 @@ import { format, isToday, isPast, differenceInDays } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { cn, cleanTitle } from '@/lib/utils';
 import {
   Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw,
   CheckSquare, Bell, X, Check,
@@ -93,18 +93,6 @@ function formatTime(time: string) {
   return `${displayHour}:${m}${ampm}`;
 }
 
-function cleanTitle(title: string): string {
-  return title
-    .replace(/^Electronic Deadline:\s*/i, '')
-    .replace(/^Electronic Submission:\s*/i, '')
-    .replace(/^Submission:\s*/i, '')
-    .replace(/^Assignment:\s*/i, '')
-    .replace(/^Quiz:\s*/i, '')
-    .replace(/^Test:\s*/i, '')
-    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
-    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
-    .trim();
-}
 
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);

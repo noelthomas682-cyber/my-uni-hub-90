@@ -3,7 +3,7 @@ import { format, isPast, isToday, differenceInDays } from 'date-fns';
 import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { cn, cleanTitle } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type SubTab = 'schedule' | 'tasks' | 'goals';
@@ -20,18 +20,6 @@ interface Goal {
   created_at: string;
 }
 
-function cleanTitle(title: string): string {
-  return title
-    .replace(/^Electronic Deadline:\s*/i, '')
-    .replace(/^Electronic Submission:\s*/i, '')
-    .replace(/^Submission:\s*/i, '')
-    .replace(/^Assignment:\s*/i, '')
-    .replace(/^Quiz:\s*/i, '')
-    .replace(/^Test:\s*/i, '')
-    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
-    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
-    .trim();
-}
 
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);
