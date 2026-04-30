@@ -3,7 +3,7 @@ import { format, isToday, isPast, differenceInDays } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { cn, cleanTitle } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import {
   Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw,
   CheckSquare, Bell, X, Check,
@@ -93,6 +93,18 @@ function formatTime(time: string) {
   return `${displayHour}:${m}${ampm}`;
 }
 
+function cleanTitle(title: string): string {
+  return title
+    .replace(/^Electronic Deadline:\s*/i, '')
+    .replace(/^Electronic Submission:\s*/i, '')
+    .replace(/^Submission:\s*/i, '')
+    .replace(/^Assignment:\s*/i, '')
+    .replace(/^Quiz:\s*/i, '')
+    .replace(/^Test:\s*/i, '')
+    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
+    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
+    .trim();
+}
 
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);
@@ -204,76 +216,79 @@ export default function HomePage() {
       .eq('id', user.id);
   };
 
-  const loadData = () => {
+  const loadData = async () => {
     if (!user) return;
     setErrors({});
+    setLoading(true);
 
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Profile + session count
-    supabase
-      .from('profiles')
-      .select('full_name, university, streak_count, activities, session_count')
-      .eq('id', user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) {
-          setErrors(e => ({ ...e, profile: 'Could not load profile' }));
-          return;
-        }
-        if (data) {
-          setProfile(data);
-          if (data.activities) setActivities(data.activities);
-          incrementSessionCount(data.session_count || 0);
-        }
-      });
+    // Run all critical fetches in parallel and wait for ALL to complete
+    // before setting loading = false. This prevents partial renders where
+    // the skeleton disappears while some data is still loading.
+    const [profileRes, sleepRes, lmsRes, eventsRes, tasksRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('full_name, university, streak_count, activities, session_count')
+        .eq('id', user.id)
+        .single(),
+      supabase
+        .from('sleep_schedule')
+        .select('sleep_time, wake_time')
+        .eq('user_id', user.id)
+        .single(),
+      supabase
+        .from('lms_connections')
+        .select('is_connected')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('calendar_events')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('start_time', startOfDay.toISOString())
+        .lte('start_time', endOfDay.toISOString())
+        .order('start_time'),
+      supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_complete', false)
+        .not('due_date', 'is', null)
+        .order('due_date')
+        .limit(50),
+    ]);
 
-    // Sleep schedule
-    supabase
-      .from('sleep_schedule')
-      .select('sleep_time, wake_time')
-      .eq('user_id', user.id)
-      .single()
-      .then(({ data }) => { if (data) setSleepSchedule(data); });
+    // Process profile
+    if (profileRes.error) {
+      setErrors(e => ({ ...e, profile: 'Could not load profile' }));
+    } else if (profileRes.data) {
+      setProfile(profileRes.data);
+      if (profileRes.data.activities) setActivities(profileRes.data.activities);
+      incrementSessionCount(profileRes.data.session_count || 0);
+    }
 
-    // LMS connection status
-    supabase
-      .from('lms_connections')
-      .select('is_connected')
-      .eq('user_id', user.id)
-      .maybeSingle()
-      .then(({ data }) => { setLmsConnected(data?.is_connected === true); });
+    // Process sleep schedule
+    if (sleepRes.data) setSleepSchedule(sleepRes.data);
 
-    // Today's calendar events
-    supabase
-      .from('calendar_events')
-      .select('*')
-      .eq('user_id', user.id)
-      .gte('start_time', startOfDay.toISOString())
-      .lte('start_time', endOfDay.toISOString())
-      .order('start_time')
-      .then(({ data, error }) => {
-        if (error) setErrors(e => ({ ...e, events: 'Could not load schedule' }));
-        setEvents(data || []);
-        setLoading(false);
-      });
+    // Process LMS connection
+    setLmsConnected(lmsRes.data?.is_connected === true);
 
-    // Incomplete tasks with due dates
-    supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_complete', false)
-      .not('due_date', 'is', null)
-      .order('due_date')
-      .limit(50)
-      .then(({ data, error }) => {
-        if (error) setErrors(e => ({ ...e, tasks: 'Could not load tasks' }));
-        setTasks(data || []);
-      });
+    // Process calendar events
+    if (eventsRes.error) setErrors(e => ({ ...e, events: 'Could not load schedule' }));
+    setEvents(eventsRes.data || []);
+
+    // Process tasks
+    if (tasksRes.error) setErrors(e => ({ ...e, tasks: 'Could not load tasks' }));
+    setTasks(tasksRes.data || []);
+
+    // All critical data loaded — hide skeleton now
+    setLoading(false);
+
+
 
     // Recently completed tasks
     const sevenDaysAgo = new Date();
