@@ -1,152 +1,272 @@
 // supabase/functions/_shared/lms-registry.ts
-// Maps university email domains → LMS type + base URL.
+//
+// PURPOSE: Detection logic for university email systems and LMS platforms.
+// This file contains ONLY detection functions and URL probe patterns.
+// University data (names, domains, LMS URLs) lives exclusively in the
+// university_registry table in Supabase — not here.
+//
+// HOW IT FITS TOGETHER:
+//   1. detect-lms/index.ts calls these functions
+//   2. Results are written back to university_registry in Supabase
+//   3. Onboarding reads from university_registry to show correct links
+//   4. Admin page manages university_registry rows directly
+//
+// TO ADD A UNIVERSITY: insert a row in university_registry — no code changes needed.
 
-export type LmsType = 'canvas' | 'moodle' | 'blackboard' | 'd2l' | 'unknown'
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface LmsInfo {
-  type: LmsType
-  baseUrl: string
-  name: string
-  authMethod: 'oauth2' | 'token'
-  ssoProvider?: 'microsoft' | 'google'
+export type LmsType     = 'canvas' | 'moodle' | 'blackboard' | 'd2l' | 'unknown'
+export type EmailSystem = 'microsoft' | 'google' | 'unknown'
+export type CalendarType = 'outlook' | 'google' | 'unknown'
+export type Country     = 'UK' | 'US' | 'CA' | 'AU' | 'NZ' | 'EU' | 'OTHER'
+
+export interface DetectionResult {
+  // Email and calendar system — always linked (Google account = Google Calendar)
+  email_system:     EmailSystem
+  calendar_type:    CalendarType
+
+  // LMS system and the confirmed URL for that university's specific instance
+  lms_type:         LmsType
+  lms_instance_url: string | null
+
+  // Country derived from domain TLD — used to prioritise probe order
+  country:          Country
+
+  // Which method produced this result
+  source: 'registry' | 'probe' | 'manual' | 'unknown'
 }
 
-const UK_REGISTRY: Record<string, LmsInfo> = {
-  'ucl.ac.uk':              { type: 'canvas',     baseUrl: 'https://canvas.ucl.ac.uk',                    name: 'UCL Canvas', authMethod: 'oauth2' },
-  'imperial.ac.uk':         { type: 'blackboard', baseUrl: 'https://bb.imperial.ac.uk',                   name: 'Blackboard Learn', authMethod: 'oauth2' },
-  'kcl.ac.uk':              { type: 'canvas',     baseUrl: 'https://keats.kcl.ac.uk',                     name: 'KEATS (Canvas)', authMethod: 'oauth2' },
-  'lse.ac.uk':              { type: 'moodle',     baseUrl: 'https://moodle.lse.ac.uk',                    name: 'Moodle', authMethod: 'token' },
-  'manchester.ac.uk':       { type: 'blackboard', baseUrl: 'https://online.manchester.ac.uk',              name: 'Blackboard', authMethod: 'oauth2' },
-  'ed.ac.uk':               { type: 'canvas',     baseUrl: 'https://canvas.ed.ac.uk',                     name: 'Learn (Canvas)', authMethod: 'oauth2' },
-  'bristol.ac.uk':          { type: 'blackboard', baseUrl: 'https://www.ole.bris.ac.uk',                  name: 'Blackboard', authMethod: 'oauth2' },
-  'bham.ac.uk':             { type: 'canvas',     baseUrl: 'https://canvas.bham.ac.uk',                   name: 'Canvas', authMethod: 'oauth2' },
-  'leeds.ac.uk':            { type: 'moodle',     baseUrl: 'https://minerva.leeds.ac.uk',                 name: 'Minerva (Moodle)', authMethod: 'token' },
-  'dur.ac.uk':              { type: 'blackboard', baseUrl: 'https://duo.dur.ac.uk',                       name: 'Duo (Blackboard)', authMethod: 'oauth2' },
-  'warwick.ac.uk':          { type: 'moodle',     baseUrl: 'https://moodle.warwick.ac.uk',                name: 'Moodle', authMethod: 'token' },
-  'nottingham.ac.uk':       { type: 'moodle',     baseUrl: 'https://moodle.nottingham.ac.uk',             name: 'Moodle', authMethod: 'token' },
-  'soton.ac.uk':            { type: 'blackboard', baseUrl: 'https://blackboard.soton.ac.uk',              name: 'Blackboard', authMethod: 'oauth2' },
-  'sheffield.ac.uk':        { type: 'blackboard', baseUrl: 'https://vle.shef.ac.uk',                     name: 'MOLE (Blackboard)', authMethod: 'oauth2' },
-  'exeter.ac.uk':           { type: 'moodle',     baseUrl: 'https://vle.exeter.ac.uk',                   name: 'ELE (Moodle)', authMethod: 'token' },
-  'york.ac.uk':             { type: 'moodle',     baseUrl: 'https://yorkshare.york.ac.uk',               name: 'Yorkshare (Moodle)', authMethod: 'token' },
-  'bath.ac.uk':             { type: 'moodle',     baseUrl: 'https://moodle.bath.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'qmul.ac.uk':             { type: 'moodle',     baseUrl: 'https://qmplus.qmul.ac.uk',                  name: 'QMplus (Moodle)', authMethod: 'token' },
-  'rhul.ac.uk':             { type: 'moodle',     baseUrl: 'https://moodle.royalholloway.ac.uk',         name: 'Moodle', authMethod: 'token' },
-  'sussex.ac.uk':           { type: 'canvas',     baseUrl: 'https://canvas.sussex.ac.uk',                name: 'Canvas', authMethod: 'oauth2' },
-  'leicester.ac.uk':        { type: 'blackboard', baseUrl: 'https://blackboard.le.ac.uk',                name: 'Blackboard', authMethod: 'oauth2' },
-  'surrey.ac.uk':           { type: 'canvas',     baseUrl: 'https://surrey.instructure.com',             name: 'Canvas', authMethod: 'oauth2' },
-  'reading.ac.uk':          { type: 'blackboard', baseUrl: 'https://bb.reading.ac.uk',                   name: 'Blackboard', authMethod: 'oauth2' },
-  'liverpool.ac.uk':        { type: 'canvas',     baseUrl: 'https://canvas.liverpool.ac.uk',             name: 'Canvas', authMethod: 'oauth2' },
-  'glasgow.ac.uk':          { type: 'moodle',     baseUrl: 'https://moodle.gla.ac.uk',                   name: 'Moodle', authMethod: 'token' },
-  'st-andrews.ac.uk':       { type: 'moodle',     baseUrl: 'https://moody.st-andrews.ac.uk',             name: 'Moodle', authMethod: 'token' },
-  'ox.ac.uk':               { type: 'canvas',     baseUrl: 'https://canvas.ox.ac.uk',                    name: 'Canvas', authMethod: 'oauth2' },
-  'cam.ac.uk':              { type: 'moodle',     baseUrl: 'https://www.vle.cam.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'essex.ac.uk':            { type: 'moodle',     baseUrl: 'https://moodle.essex.ac.uk',                 name: 'Essex Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'anglia.ac.uk':           { type: 'moodle',     baseUrl: 'https://moodle.anglia.ac.uk',                name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'kent.ac.uk':             { type: 'moodle',     baseUrl: 'https://moodle.kent.ac.uk',                  name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'uea.ac.uk':              { type: 'moodle',     baseUrl: 'https://moodle.uea.ac.uk',                   name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'herts.ac.uk':            { type: 'canvas',     baseUrl: 'https://canvas.herts.ac.uk',                 name: 'Canvas', authMethod: 'oauth2' },
-  'brunel.ac.uk':           { type: 'moodle',     baseUrl: 'https://ble.brunel.ac.uk',                   name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'portsmouth.ac.uk':       { type: 'moodle',     baseUrl: 'https://moodle.port.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'hull.ac.uk':             { type: 'blackboard', baseUrl: 'https://e.hull.ac.uk',                       name: 'Blackboard', authMethod: 'oauth2' },
-  'lancaster.ac.uk':        { type: 'moodle',     baseUrl: 'https://moodle.lancaster.ac.uk',             name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'lincoln.ac.uk':          { type: 'canvas',     baseUrl: 'https://canvas.lincoln.ac.uk',               name: 'Canvas', authMethod: 'oauth2' },
-  'northumbria.ac.uk':      { type: 'blackboard', baseUrl: 'https://elp.northumbria.ac.uk',              name: 'Blackboard', authMethod: 'oauth2' },
-  'coventry.ac.uk':         { type: 'moodle',     baseUrl: 'https://aula.coventry.ac.uk',                name: 'Aula (Moodle)', authMethod: 'token' },
-  'plymouth.ac.uk':         { type: 'moodle',     baseUrl: 'https://moodle.plymouth.ac.uk',              name: 'Moodle', authMethod: 'token' },
-  'uel.ac.uk':              { type: 'moodle',     baseUrl: 'https://moodle.uel.ac.uk',                   name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'mmu.ac.uk':              { type: 'moodle',     baseUrl: 'https://moodle.mmu.ac.uk',                   name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'dmu.ac.uk':              { type: 'canvas',     baseUrl: 'https://canvas.dmu.ac.uk',                   name: 'Canvas', authMethod: 'oauth2' },
-  'salford.ac.uk':          { type: 'blackboard', baseUrl: 'https://online.salford.ac.uk',               name: 'Blackboard', authMethod: 'oauth2' },
-  'aston.ac.uk':            { type: 'canvas',     baseUrl: 'https://canvas.aston.ac.uk',                 name: 'Canvas', authMethod: 'oauth2' },
-  'open.ac.uk':             { type: 'moodle',     baseUrl: 'https://learn2.open.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'strath.ac.uk':           { type: 'moodle',     baseUrl: 'https://classes.strath.ac.uk',               name: 'Moodle', authMethod: 'token', ssoProvider: 'microsoft' },
-  'hw.ac.uk':               { type: 'canvas',     baseUrl: 'https://canvas.hw.ac.uk',                    name: 'Canvas', authMethod: 'oauth2' },
-  'dundee.ac.uk':           { type: 'canvas',     baseUrl: 'https://canvas.dundee.ac.uk',                name: 'Canvas', authMethod: 'oauth2' },
-  'napier.ac.uk':           { type: 'moodle',     baseUrl: 'https://moodle.napier.ac.uk',                name: 'Moodle', authMethod: 'token' },
-  'aber.ac.uk':             { type: 'blackboard', baseUrl: 'https://blackboard.aber.ac.uk',              name: 'Blackboard', authMethod: 'oauth2' },
-  'cardiff.ac.uk':          { type: 'canvas',     baseUrl: 'https://canvas.cardiff.ac.uk',               name: 'Canvas', authMethod: 'oauth2' },
-  'swansea.ac.uk':          { type: 'canvas',     baseUrl: 'https://canvas.swansea.ac.uk',               name: 'Canvas', authMethod: 'oauth2' },
-  'bangor.ac.uk':           { type: 'blackboard', baseUrl: 'https://blackboard.bangor.ac.uk',            name: 'Blackboard', authMethod: 'oauth2' },
-  'city.ac.uk':             { type: 'moodle',     baseUrl: 'https://moodle.city.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'lboro.ac.uk':            { type: 'moodle',     baseUrl: 'https://learn.lboro.ac.uk',                  name: 'Moodle', authMethod: 'token' },
-  'abdn.ac.uk':             { type: 'canvas',     baseUrl: 'https://abdn.instructure.com',               name: 'MyAberdeen (Canvas)', authMethod: 'oauth2' },
-}
+// ─── Domain helpers ───────────────────────────────────────────────────────────
 
-// US universities
-const US_REGISTRY: Record<string, LmsInfo> = {
-  'mit.edu':                { type: 'canvas',     baseUrl: 'https://canvas.mit.edu',                     name: 'Canvas', authMethod: 'oauth2' },
-  'stanford.edu':           { type: 'canvas',     baseUrl: 'https://canvas.stanford.edu',                name: 'Canvas', authMethod: 'oauth2' },
-  'harvard.edu':            { type: 'canvas',     baseUrl: 'https://canvas.harvard.edu',                 name: 'Canvas', authMethod: 'oauth2' },
-  'berkeley.edu':           { type: 'canvas',     baseUrl: 'https://bcourses.berkeley.edu',              name: 'bCourses (Canvas)', authMethod: 'oauth2' },
-  'umich.edu':              { type: 'canvas',     baseUrl: 'https://umich.instructure.com',              name: 'Canvas', authMethod: 'oauth2' },
-  'umn.edu':                { type: 'canvas',     baseUrl: 'https://canvas.umn.edu',                     name: 'Canvas', authMethod: 'oauth2' },
-  'gatech.edu':             { type: 'canvas',     baseUrl: 'https://canvas.gatech.edu',                  name: 'Canvas', authMethod: 'oauth2' },
-  'purdue.edu':             { type: 'd2l',        baseUrl: 'https://purdue.brightspace.com',             name: 'Brightspace', authMethod: 'oauth2' },
-  'ufl.edu':                { type: 'canvas',     baseUrl: 'https://ufl.instructure.com',               name: 'Canvas', authMethod: 'oauth2' },
-  'nyu.edu':                { type: 'canvas',     baseUrl: 'https://newclasses.nyu.edu',                 name: 'Canvas', authMethod: 'oauth2' },
-  'columbia.edu':           { type: 'canvas',     baseUrl: 'https://courseworks2.columbia.edu',          name: 'CourseWorks (Canvas)', authMethod: 'oauth2' },
-  'wisc.edu':               { type: 'canvas',     baseUrl: 'https://canvas.wisc.edu',                    name: 'Canvas', authMethod: 'oauth2' },
-  'psu.edu':                { type: 'canvas',     baseUrl: 'https://psu.instructure.com',               name: 'Canvas', authMethod: 'oauth2' },
-  'osu.edu':                { type: 'canvas',     baseUrl: 'https://osu.instructure.com',               name: 'Canvas', authMethod: 'oauth2' },
-  'tamu.edu':               { type: 'canvas',     baseUrl: 'https://canvas.tamu.edu',                    name: 'Canvas', authMethod: 'oauth2' },
-  'ucdavis.edu':            { type: 'canvas',     baseUrl: 'https://canvas.ucdavis.edu',                name: 'Canvas', authMethod: 'oauth2' },
-  'rutgers.edu':            { type: 'canvas',     baseUrl: 'https://canvas.rutgers.edu',                 name: 'Canvas', authMethod: 'oauth2' },
-}
-
-// Canadian universities
-const CA_REGISTRY: Record<string, LmsInfo> = {
-  'utoronto.ca':            { type: 'canvas',     baseUrl: 'https://q.utoronto.ca',                     name: 'Quercus (Canvas)', authMethod: 'oauth2' },
-  'ubc.ca':                 { type: 'canvas',     baseUrl: 'https://canvas.ubc.ca',                     name: 'Canvas', authMethod: 'oauth2' },
-  'mcgill.ca':              { type: 'moodle',     baseUrl: 'https://mycourses2.mcgill.ca',              name: 'myCourses (Moodle)', authMethod: 'token' },
-  'uwaterloo.ca':           { type: 'd2l',        baseUrl: 'https://learn.uwaterloo.ca',                name: 'LEARN (D2L)', authMethod: 'oauth2' },
-  'uottawa.ca':             { type: 'd2l',        baseUrl: 'https://uottawa.brightspace.com',           name: 'Brightspace', authMethod: 'oauth2' },
-}
-
-// Australian universities
-const AU_REGISTRY: Record<string, LmsInfo> = {
-  'unsw.edu.au':            { type: 'moodle',     baseUrl: 'https://moodle.telt.unsw.edu.au',           name: 'Moodle', authMethod: 'token' },
-  'unimelb.edu.au':         { type: 'canvas',     baseUrl: 'https://canvas.unimelb.edu.au',             name: 'Canvas', authMethod: 'oauth2' },
-  'monash.edu':             { type: 'moodle',     baseUrl: 'https://learning.monash.edu',               name: 'Moodle', authMethod: 'token' },
-  'usyd.edu.au':            { type: 'canvas',     baseUrl: 'https://canvas.sydney.edu.au',              name: 'Canvas', authMethod: 'oauth2' },
-  'anu.edu.au':             { type: 'canvas',     baseUrl: 'https://wattlecourses.anu.edu.au',          name: 'Wattle (Canvas)', authMethod: 'oauth2' },
-}
-
-const FULL_REGISTRY: Record<string, LmsInfo> = {
-  ...UK_REGISTRY,
-  ...US_REGISTRY,
-  ...CA_REGISTRY,
-  ...AU_REGISTRY,
-}
-
+// Extracts domain from an email address.
+// e.g. "student@essex.ac.uk" → "essex.ac.uk"
 export function extractDomain(email: string): string {
-  return email.split('@')[1]?.toLowerCase() || ''
+  return email.split('@')[1]?.toLowerCase().trim() || ''
 }
 
-export function detectLmsFromEmail(email: string): LmsInfo | null {
-  const domain = extractDomain(email)
-  if (!domain) return null
+// Determines country from domain TLD.
+// Used by getProbesByCountry() to prioritise LMS probe order —
+// UK → Moodle first, US → Canvas first, CA → D2L first, etc.
+export function getCountryFromDomain(domain: string): Country {
+  if (domain.endsWith('.ac.uk'))  return 'UK'
+  if (domain.endsWith('.edu.au')) return 'AU'
+  if (domain.endsWith('.ac.nz'))  return 'NZ'
+  if (domain.endsWith('.ca'))     return 'CA'
+  if (domain.endsWith('.edu'))    return 'US'
+  if (
+    domain.endsWith('.de') || domain.endsWith('.fr') ||
+    domain.endsWith('.nl') || domain.endsWith('.es') ||
+    domain.endsWith('.it') || domain.endsWith('.se') ||
+    domain.endsWith('.dk') || domain.endsWith('.fi') ||
+    domain.endsWith('.no') || domain.endsWith('.be') ||
+    domain.endsWith('.ch') || domain.endsWith('.at')
+  ) return 'EU'
+  return 'OTHER'
+}
 
-  // Direct domain match
-  if (FULL_REGISTRY[domain]) return FULL_REGISTRY[domain]
+// ─── Email system detection ───────────────────────────────────────────────────
 
-  // Try parent domain (e.g. cs.ox.ac.uk → ox.ac.uk)
-  const parts = domain.split('.')
-  for (let i = 1; i < parts.length - 1; i++) {
-    const parent = parts.slice(i).join('.')
-    if (FULL_REGISTRY[parent]) return FULL_REGISTRY[parent]
+// Checks if a domain uses Microsoft 365 by querying Microsoft's
+// OpenID Connect tenant discovery endpoint.
+// A valid response with "issuer" containing "microsoftonline" = Microsoft tenant confirmed.
+// Ref: https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-protocols-oidc
+export async function detectMicrosoft(domain: string): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    const res = await fetch(
+      `https://login.microsoftonline.com/${domain}/v2.0/.well-known/openid-configuration`,
+      { signal: controller.signal }
+    )
+    clearTimeout(timeout)
+    if (!res.ok) return false
+    const json = await res.json()
+    return typeof json.issuer === 'string' && json.issuer.includes('microsoftonline')
+  } catch {
+    return false
   }
-
-  return null
 }
 
-// URL patterns to probe when domain isn't in registry
-export const PROBE_PATTERNS = [
-  (d: string) => `https://canvas.${d}/api/v1/users/self`,
-  (d: string) => `https://${d.split('.')[0]}.instructure.com/api/v1/users/self`,
+// Checks if a domain uses Google Workspace by inspecting MX DNS records.
+// Google Workspace domains route email through Google's mail servers,
+// so MX records containing "google.com" or "googlemail.com" = Google Workspace confirmed.
+// Uses Google's public DNS-over-HTTPS API for the lookup.
+export async function detectGoogle(domain: string): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 4000)
+    const res = await fetch(
+      `https://dns.google/resolve?name=${domain}&type=MX`,
+      { signal: controller.signal }
+    )
+    clearTimeout(timeout)
+    if (!res.ok) return false
+    const json = await res.json()
+    const answers = json?.Answer || []
+    return answers.some((a: any) =>
+      typeof a.data === 'string' &&
+      (a.data.includes('google.com') || a.data.includes('googlemail.com'))
+    )
+  } catch {
+    return false
+  }
+}
+
+// Runs Microsoft and Google detection in parallel for speed.
+// Returns email_system and calendar_type together — they are always linked:
+//   Microsoft → Outlook calendar instructions shown in onboarding
+//   Google    → Google Calendar instructions shown in onboarding
+export async function detectEmailSystem(domain: string): Promise<{
+  email_system:  EmailSystem
+  calendar_type: CalendarType
+}> {
+  const [isMicrosoft, isGoogle] = await Promise.all([
+    detectMicrosoft(domain),
+    detectGoogle(domain),
+  ])
+  if (isMicrosoft) return { email_system: 'microsoft', calendar_type: 'outlook' }
+  if (isGoogle)    return { email_system: 'google',    calendar_type: 'google'  }
+  return                  { email_system: 'unknown',   calendar_type: 'unknown' }
+}
+
+// ─── LMS probe patterns ───────────────────────────────────────────────────────
+//
+// Each probe is a function that takes a domain and returns a URL to check.
+// If the URL responds with a non-404 status, that LMS is confirmed at that URL.
+// Patterns ordered by global prevalence within each LMS type.
+//
+// These patterns are used by detectLms() below.
+// detect-lms/index.ts → detectLms() → these probes → confirmed LMS URL
+
+export const CANVAS_PROBES = [
+  // Instructure-hosted Canvas (most common — uni.instructure.com)
+  (d: string) => `https://${d.split('.')[0]}.instructure.com/api/v1/accounts`,
+  // Self-hosted Canvas
+  (d: string) => `https://canvas.${d}/api/v1/accounts`,
+  (d: string) => `https://learn.${d}/api/v1/accounts`,
+]
+
+export const MOODLE_PROBES = [
+  // Standard Moodle webservice — returns site info JSON if Moodle is running
   (d: string) => `https://moodle.${d}/webservice/rest/server.php?wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`,
   (d: string) => `https://learn.${d}/webservice/rest/server.php?wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`,
-  (d: string) => `https://blackboard.${d}/learn/api/public/v1/system`,
-  (d: string) => `https://bb.${d}/learn/api/public/v1/system`,
-  (d: string) => `https://${d.split('.')[0]}.brightspace.com/d2l/api/lp/1.38/users/whoami`,
-  (d: string) => `https://d2l.${d}/d2l/api/lp/1.38/users/whoami`,
+  (d: string) => `https://vle.${d}/webservice/rest/server.php?wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`,
+  (d: string) => `https://elearn.${d}/webservice/rest/server.php?wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`,
+  (d: string) => `https://lms.${d}/webservice/rest/server.php?wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`,
 ]
+
+export const BLACKBOARD_PROBES = [
+  // Blackboard hosted (uni.blackboard.com)
+  (d: string) => `https://${d.split('.')[0]}.blackboard.com/learn/api/public/v1/system/version`,
+  // Self-hosted Blackboard
+  (d: string) => `https://blackboard.${d}/learn/api/public/v1/system/version`,
+  (d: string) => `https://bb.${d}/learn/api/public/v1/system/version`,
+]
+
+export const D2L_PROBES = [
+  // D2L Brightspace hosted (uni.brightspace.com — most common)
+  (d: string) => `https://${d.split('.')[0]}.brightspace.com/d2l/api/lp/1.38/users/whoami`,
+  // Self-hosted D2L
+  (d: string) => `https://d2l.${d}/d2l/api/lp/1.38/users/whoami`,
+  (d: string) => `https://brightspace.${d}/d2l/api/lp/1.38/users/whoami`,
+]
+
+// Returns LMS probe sets in country-priority order.
+// Checking the most likely LMS first reduces average detection time.
+// Priority based on LMS market share data per country.
+export function getProbesByCountry(country: Country): Array<{
+  type:   LmsType
+  probes: Array<(d: string) => string>
+}> {
+  const sets = {
+    canvas:     { type: 'canvas'     as LmsType, probes: CANVAS_PROBES     },
+    moodle:     { type: 'moodle'     as LmsType, probes: MOODLE_PROBES     },
+    blackboard: { type: 'blackboard' as LmsType, probes: BLACKBOARD_PROBES },
+    d2l:        { type: 'd2l'        as LmsType, probes: D2L_PROBES        },
+  }
+
+  // LMS priority order per country — most common first
+  const order: Record<Country, LmsType[]> = {
+    UK:    ['moodle', 'blackboard', 'canvas', 'd2l'],
+    US:    ['canvas', 'blackboard', 'd2l',    'moodle'],
+    CA:    ['d2l',    'canvas',     'moodle', 'blackboard'],
+    AU:    ['canvas', 'moodle',     'blackboard', 'd2l'],
+    NZ:    ['moodle', 'canvas',     'blackboard', 'd2l'],
+    EU:    ['moodle', 'canvas',     'blackboard', 'd2l'],
+    OTHER: ['moodle', 'canvas',     'blackboard', 'd2l'],
+  }
+
+  return order[country].map(type => sets[type])
+}
+
+// ─── LMS detection ────────────────────────────────────────────────────────────
+
+// Probes a single URL — returns true if it responds (not 404, not timeout).
+// 3 second timeout prevents slow university servers from blocking detection.
+async function probeUrl(url: string): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3000)
+    const res = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json, text/html' },
+    })
+    clearTimeout(timeout)
+    return res.status !== 404 && res.status !== 0
+  } catch {
+    return false
+  }
+}
+
+// Strips the API path from a confirmed probe URL to get the base instance URL.
+// e.g. "https://moodle.essex.ac.uk/webservice/rest/..." → "https://moodle.essex.ac.uk"
+// This base URL is stored in university_registry.lms_instance_url
+// and used in onboarding to build the direct link for the student.
+function extractBaseUrl(url: string, type: LmsType): string {
+  const splitPoints: Record<LmsType, string> = {
+    canvas:     '/api/v1',
+    moodle:     '/webservice',
+    blackboard: '/learn/api',
+    d2l:        '/d2l/api',
+    unknown:    '/',
+  }
+  const split = splitPoints[type]
+  return split ? url.split(split)[0] : url
+}
+
+// Main LMS detection function.
+// Checks LMS types in country-priority order (sequentially).
+// Within each LMS type, all URL patterns are checked in parallel.
+// Stops and returns as soon as any pattern for any LMS type responds.
+//
+// Called by: detect-lms/index.ts
+// Writes result to: university_registry via detect-lms/index.ts
+export async function detectLms(domain: string, country: Country): Promise<{
+  lms_type:         LmsType
+  lms_instance_url: string
+} | null> {
+  const probeSets = getProbesByCountry(country)
+
+  for (const { type, probes } of probeSets) {
+    // Check all URL patterns for this LMS type in parallel
+    const results = await Promise.all(
+      probes.map(async (pattern) => {
+        const url = pattern(domain)
+        const found = await probeUrl(url)
+        return found ? { url, type } : null
+      })
+    )
+
+    const match = results.find(r => r !== null)
+    if (match) {
+      return {
+        lms_type:         match.type,
+        lms_instance_url: extractBaseUrl(match.url, match.type),
+      }
+    }
+  }
+
+  // No LMS found across all patterns
+  return null
+}
