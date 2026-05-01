@@ -3,7 +3,9 @@ import { format, isToday, isPast, differenceInDays } from 'date-fns';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { cn } from '@/lib/utils';
+import { cn, cleanTitle } from '@/lib/utils';
+import { trackEvent } from '@/lib/trackEvent';
+import { trackEvent } from '@/lib/trackEvent';
 import {
   Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw,
   CheckSquare, Bell, X, Check,
@@ -221,6 +223,9 @@ export default function HomePage() {
     setErrors({});
     setLoading(true);
 
+    // Track app open — powers engagement scoring in risk system
+    trackEvent(user.id, 'app_open');
+
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
@@ -287,6 +292,10 @@ export default function HomePage() {
 
     // All critical data loaded — hide skeleton now
     setLoading(false);
+
+    // Track app_open engagement event — powers risk scoring system
+    // Called once per loadData() which fires on every home page visit
+    await trackEvent(user.id, 'app_open');
 
 
 
@@ -400,6 +409,8 @@ export default function HomePage() {
       if (error) { toast.error('Could not update task'); return; }
       setTasks(prev => prev.filter(t => t.id !== task.id));
       setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
+      // Track task completion — risk scoring monitors this signal
+      trackEvent(user.id, 'task_complete', { task_id: task.id });
       toast.success('Task completed ✓');
     } else {
       const { error } = await supabase

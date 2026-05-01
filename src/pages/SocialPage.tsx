@@ -4,6 +4,7 @@ import { UserPlus, Trophy, RefreshCw, Plus, X, Camera, MessageCircle, QrCode, Se
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { trackEvent } from '@/lib/trackEvent'; // contact_added + team_join signals
 import QRCode from 'react-qr-code';
 import { toast } from 'sonner';
 import { BrowserQRCodeReader } from '@zxing/browser';
@@ -231,8 +232,6 @@ function IncomingRequests({ userId }: { userId: string }) {
   );
 }
 
-const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
-
 export default function SocialPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -265,6 +264,7 @@ export default function SocialPage() {
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const EMOJIS = ['🏆', '⚽', '🏀', '🏈', '🎾', '🏊', '🏋️', '🎭', '🎵', '🏃', '🚴', '🤸'];
 
   useEffect(() => {
     if (!user) return;
@@ -408,6 +408,7 @@ export default function SocialPage() {
       { user_id: found.id, contact_id: user.id },
     ]);
     if (error) { toast.error('Could not add contact. Please try again.'); setScanning(false); return; }
+    await trackEvent(user.id, 'contact_added', { contact_id: found.id });
     toast.success(`Added ${found.full_name || found.email} as a contact`);
     setContacts(prev => [...prev, found]);
     setScanInput('');
@@ -430,6 +431,7 @@ export default function SocialPage() {
       await supabase.from('conversation_members').insert({ conversation_id: conv.id, user_id: user.id });
       toast.success(`Joined ${team.name}! Added to group chat.`);
     } else { toast.success(`Joined ${team.name}!`); }
+    await trackEvent(user.id, 'team_join', { team_id: team.id });
     setTeams(prev => [...prev, { ...team, myRole: 'member' }]);
     setJoinInput('');
     setJoining(false);

@@ -4,6 +4,7 @@ import { MapPin, Clock, Check, Plus, X, Megaphone, GraduationCap, ExternalLink, 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { trackEvent } from '@/lib/trackEvent'; // bulletin_view + session_rsvp signals
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -205,6 +206,7 @@ export default function BulletinPage() {
   };
 
   const loadAnnouncements = async (domain: string) => {
+    if (user) await trackEvent(user.id, 'bulletin_view', { domain });
     setLoading(true);
     setError(null);
 
@@ -287,6 +289,7 @@ export default function BulletinPage() {
         .from('session_rsvps')
         .insert({ session_id: sessionId, user_id: user.id, status: 'going' });
       if (error) { toast.error('Could not RSVP'); return; }
+      await trackEvent(user.id, 'session_rsvp', { session_id: sessionId });
       setRsvps(prev => ({ ...prev, [sessionId]: 'going' }));
       toast.success('You are going!');
     }

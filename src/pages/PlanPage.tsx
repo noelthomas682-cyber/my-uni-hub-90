@@ -4,6 +4,8 @@ import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshC
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn, cleanTitle } from '@/lib/utils';
+import { trackEvent } from '@/lib/trackEvent'; // Powers risk scoring
+import { trackEvent } from '@/lib/trackEvent';
 import { toast } from 'sonner';
 
 type SubTab = 'schedule' | 'tasks' | 'goals';
@@ -19,7 +21,6 @@ interface Goal {
   completed_at: string | null;
   created_at: string;
 }
-
 
 function getTaskStatus(dueDate: string) {
   const due = new Date(dueDate);
@@ -144,7 +145,6 @@ export default function PlanPage() {
 
   const addTask = async () => {
     if (!newTaskTitle.trim() || !user) return;
-    // FIX: removed 'source' field — not in tasks schema
     const { data, error } = await supabase.from('tasks').insert({
       user_id: user.id,
       title: newTaskTitle.trim(),
@@ -157,6 +157,8 @@ export default function PlanPage() {
     setTasks(prev => [data, ...prev]);
     setNewTaskTitle(''); setNewTaskDue(''); setNewTaskPriority('normal'); setNewTaskCourse('');
     setShowAddTask(false);
+    // Track task creation — engagement signal for risk scoring
+    trackEvent(user.id, 'task_add', { task_id: data.id });
     toast.success('Task added');
   };
 
@@ -202,7 +204,11 @@ export default function PlanPage() {
     }).eq('id', goal.id);
     if (error) { toast.error('Could not update goal'); return; }
     setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
-    if (isComplete) toast.success(`🎉 Goal completed: ${goal.title}`);
+    if (isComplete) {
+      // Track goal completion — strong engagement signal for risk scoring
+      trackEvent(user.id, 'goal_complete', { goal_id: goal.id });
+      toast.success(`🎉 Goal completed: ${goal.title}`);
+    }
   };
 
   const toggleTask = async (id: string, isComplete: boolean) => {
@@ -216,6 +222,8 @@ export default function PlanPage() {
       if (task) {
         setTasks(prev => prev.filter(t => t.id !== id));
         setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
+        // Track task completion — risk scoring monitors overdue task signal
+        trackEvent(user.id, 'task_complete', { task_id: id });
         toast.success('Task completed ✓');
       }
     } else {
@@ -271,7 +279,6 @@ export default function PlanPage() {
         </div>
       ) : (
         <>
-          {/* SCHEDULE TAB */}
           {activeTab === 'schedule' && (
             <div className="space-y-2">
               {showAddEvent ? (
@@ -326,7 +333,6 @@ export default function PlanPage() {
             </div>
           )}
 
-          {/* TASKS TAB */}
           {activeTab === 'tasks' && (
             <div className="space-y-2">
               {showAddTask ? (
@@ -461,7 +467,6 @@ export default function PlanPage() {
             </div>
           )}
 
-          {/* GOALS TAB */}
           {activeTab === 'goals' && (
             <div className="space-y-3">
               {showAddGoal ? (

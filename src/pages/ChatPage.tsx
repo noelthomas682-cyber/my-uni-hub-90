@@ -4,7 +4,9 @@ import { ArrowLeft, Send, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'
+import { trackEvent } from '@/lib/trackEvent' // message_sent signal;
+import { trackEvent } from '@/lib/trackEvent';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +31,6 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ── State ─────────────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -41,8 +42,6 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<any>(null);
 
-  // ── Effects ───────────────────────────────────────────────────────────────
-
   useEffect(() => {
     if (!user) return;
     loadConversations();
@@ -53,24 +52,19 @@ export default function ChatPage() {
   useEffect(() => {
     const state = location.state as { conversationId?: string } | null;
     if (!state?.conversationId || conversations.length === 0) return;
-
     const target = conversations.find(c => c.id === state.conversationId);
     if (target) openConversation(target);
   }, [location.state, conversations]);
 
-  // Scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Clean up realtime channel on unmount
   useEffect(() => {
     return () => {
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
   }, []);
-
-  // ── Data loading ──────────────────────────────────────────────────────────
 
   const loadConversations = async () => {
     const { data } = await supabase
@@ -96,7 +90,6 @@ export default function ChatPage() {
       .order('created_at');
     setMessages(data as Message[] || []);
 
-    // Subscribe to new messages in real time
     if (channelRef.current) supabase.removeChannel(channelRef.current);
     const channel = supabase
       .channel(`conv-${convId}`)
@@ -110,17 +103,13 @@ export default function ChatPage() {
     channelRef.current = channel;
   };
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-
   const openConversation = (conv: Conversation) => {
     setActiveConv(conv);
     setShowNewChat(false);
     loadMessages(conv.id);
   };
 
-  // Find or create a direct conversation with a contact
   const startNewChat = async (contact: any) => {
-    // Check if a shared conversation already exists
     const { data: existing } = await supabase
       .from('conversation_members')
       .select('conversation_id')
@@ -141,7 +130,6 @@ export default function ChatPage() {
       }
     }
 
-    // No existing conversation — create a new direct one
     const { data: newConv, error } = await supabase
       .from('conversations')
       .insert({ type: 'direct', created_by: user!.id })
@@ -167,16 +155,16 @@ export default function ChatPage() {
       sender_id: user!.id,
       content: newMessage.trim(),
     });
+    // Track message sent — social engagement signal for risk scoring
+    trackEvent(user!.id, 'message_sent');
+    await trackEvent(user!.id, 'message_sent', { conversation_id: activeConv.id });
     setNewMessage('');
     setSending(false);
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col h-screen bg-background">
 
-      {/* ── Header ── */}
       <div className="flex items-center gap-3 px-5 pt-12 pb-4 border-b border-border/40">
         <button
           onClick={() => activeConv ? setActiveConv(null) : navigate('/home')}
@@ -195,11 +183,8 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* ── Conversation List ── */}
       {!activeConv ? (
         <div className="flex-1 overflow-y-auto px-5 py-4">
-
-          {/* New chat — contacts picker */}
           {showNewChat && (
             <div className="mb-4">
               <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">
@@ -228,7 +213,6 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* Empty state */}
           {conversations.length === 0 && !showNewChat ? (
             <div className="text-center py-20">
               <p className="font-heading font-bold text-lg mb-2">No messages yet</p>
@@ -258,7 +242,6 @@ export default function ChatPage() {
         </div>
 
       ) : (
-        /* ── Active Conversation ── */
         <>
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
             {messages.map(msg => (
@@ -284,7 +267,6 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message input */}
           <div className="px-5 py-4 border-t border-border/40 flex items-center gap-3">
             <input
               type="text"
