@@ -4,7 +4,6 @@ import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshC
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn, cleanTitle } from '@/lib/utils';
-import { trackEvent } from '@/lib/trackEvent'; // Powers risk scoring
 import { trackEvent } from '@/lib/trackEvent';
 import { toast } from 'sonner';
 
@@ -157,7 +156,6 @@ export default function PlanPage() {
     setTasks(prev => [data, ...prev]);
     setNewTaskTitle(''); setNewTaskDue(''); setNewTaskPriority('normal'); setNewTaskCourse('');
     setShowAddTask(false);
-    // Track task creation — engagement signal for risk scoring
     trackEvent(user.id, 'task_add', { task_id: data.id });
     toast.success('Task added');
   };
@@ -205,8 +203,7 @@ export default function PlanPage() {
     if (error) { toast.error('Could not update goal'); return; }
     setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
     if (isComplete) {
-      // Track goal completion — strong engagement signal for risk scoring
-      trackEvent(user.id, 'goal_complete', { goal_id: goal.id });
+      trackEvent(user!.id, 'goal_complete', { goal_id: goal.id });
       toast.success(`🎉 Goal completed: ${goal.title}`);
     }
   };
@@ -222,8 +219,7 @@ export default function PlanPage() {
       if (task) {
         setTasks(prev => prev.filter(t => t.id !== id));
         setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
-        // Track task completion — risk scoring monitors overdue task signal
-        trackEvent(user.id, 'task_complete', { task_id: id });
+        trackEvent(user!.id, 'task_complete', { task_id: id });
         toast.success('Task completed ✓');
       }
     } else {
