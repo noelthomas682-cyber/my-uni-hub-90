@@ -5,14 +5,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn, cleanTitle } from '@/lib/utils';
 import { trackEvent } from '@/lib/trackEvent';
-import { trackEvent } from '@/lib/trackEvent';
 import {
   Moon, Plus, MessageCircle, Zap, AlertTriangle, RefreshCw,
   CheckSquare, Bell, X, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface CalendarEvent {
   id: string;
@@ -48,8 +45,6 @@ interface AppNotification {
   sender?: { full_name: string | null; email: string | null };
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const EVENT_TYPE_COLOURS: Record<string, string> = {
   lecture: '#a78bfa',
   seminar: '#f59e0b',
@@ -75,8 +70,6 @@ const NOTIFICATION_ICONS: Record<string, string> = {
   class_reminder: '🔔',
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function getEventColour(type: string | null) {
   if (!type) return EVENT_TYPE_COLOURS.default;
   return EVENT_TYPE_COLOURS[type.toLowerCase()] || EVENT_TYPE_COLOURS.default;
@@ -93,19 +86,6 @@ function formatTime(time: string) {
   const ampm = hour >= 12 ? 'pm' : 'am';
   const displayHour = hour % 12 || 12;
   return `${displayHour}:${m}${ampm}`;
-}
-
-function cleanTitle(title: string): string {
-  return title
-    .replace(/^Electronic Deadline:\s*/i, '')
-    .replace(/^Electronic Submission:\s*/i, '')
-    .replace(/^Submission:\s*/i, '')
-    .replace(/^Assignment:\s*/i, '')
-    .replace(/^Quiz:\s*/i, '')
-    .replace(/^Test:\s*/i, '')
-    .replace(/^([A-Z0-9\-]+):\s*\1\s*[-–]\s*/i, '')
-    .replace(/^[A-Z0-9\-]{4,}:\s*/i, '')
-    .trim();
 }
 
 function getTaskStatus(dueDate: string) {
@@ -149,8 +129,6 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
 function ErrorCard({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="glass-card rounded-2xl p-4 flex items-center gap-3 border border-red-500/20">
@@ -165,14 +143,11 @@ function ErrorCard({ message, onRetry }: { message: string; onRetry?: () => void
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const today = new Date();
 
-  // Data
   const [profile, setProfile] = useState<any>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -183,12 +158,10 @@ export default function HomePage() {
   const [lmsConnected, setLmsConnected] = useState<boolean | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
 
-  // UI
   const [loading, setLoading] = useState(true);
   const [nightMode, setNightMode] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Notifications
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -196,26 +169,17 @@ export default function HomePage() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  // ── Data loading ──────────────────────────────────────────────────────────
-
   const incrementSessionCount = async (currentCount: number) => {
     if (!user) return;
-
-    // Only increment once per browser session — prevents counting page reloads
     const sessionKey = `rute_session_counted_${user.id}`;
     if (sessionStorage.getItem(sessionKey)) {
       setSessionCount(currentCount);
       return;
     }
-
     const newCount = currentCount + 1;
     setSessionCount(newCount);
     sessionStorage.setItem(sessionKey, '1');
-
-    await supabase
-      .from('profiles')
-      .update({ session_count: newCount })
-      .eq('id', user.id);
+    await supabase.from('profiles').update({ session_count: newCount }).eq('id', user.id);
   };
 
   const loadData = async () => {
@@ -223,51 +187,30 @@ export default function HomePage() {
     setErrors({});
     setLoading(true);
 
-    // Track app open — powers engagement scoring in risk system
-    trackEvent(user.id, 'app_open');
-
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Run all critical fetches in parallel and wait for ALL to complete
-    // before setting loading = false. This prevents partial renders where
-    // the skeleton disappears while some data is still loading.
     const [profileRes, sleepRes, lmsRes, eventsRes, tasksRes] = await Promise.all([
-      supabase
-        .from('profiles')
+      supabase.from('profiles')
         .select('full_name, university, streak_count, activities, session_count')
-        .eq('id', user.id)
-        .single(),
-      supabase
-        .from('sleep_schedule')
-        .select('sleep_time, wake_time')
-        .eq('user_id', user.id)
-        .single(),
-      supabase
-        .from('lms_connections')
-        .select('is_connected')
-        .eq('user_id', user.id)
-        .maybeSingle(),
-      supabase
-        .from('calendar_events')
-        .select('*')
+        .eq('id', user.id).single(),
+      supabase.from('sleep_schedule')
+        .select('sleep_time, wake_time').eq('user_id', user.id).single(),
+      supabase.from('lms_connections')
+        .select('is_connected').eq('user_id', user.id).maybeSingle(),
+      supabase.from('calendar_events').select('*')
         .eq('user_id', user.id)
         .gte('start_time', startOfDay.toISOString())
         .lte('start_time', endOfDay.toISOString())
         .order('start_time'),
-      supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_complete', false)
+      supabase.from('tasks').select('*')
+        .eq('user_id', user.id).eq('is_complete', false)
         .not('due_date', 'is', null)
-        .order('due_date')
-        .limit(50),
+        .order('due_date').limit(50),
     ]);
 
-    // Process profile
     if (profileRes.error) {
       setErrors(e => ({ ...e, profile: 'Could not load profile' }));
     } else if (profileRes.data) {
@@ -276,47 +219,28 @@ export default function HomePage() {
       incrementSessionCount(profileRes.data.session_count || 0);
     }
 
-    // Process sleep schedule
     if (sleepRes.data) setSleepSchedule(sleepRes.data);
-
-    // Process LMS connection
     setLmsConnected(lmsRes.data?.is_connected === true);
-
-    // Process calendar events
     if (eventsRes.error) setErrors(e => ({ ...e, events: 'Could not load schedule' }));
     setEvents(eventsRes.data || []);
-
-    // Process tasks
     if (tasksRes.error) setErrors(e => ({ ...e, tasks: 'Could not load tasks' }));
     setTasks(tasksRes.data || []);
 
-    // All critical data loaded — hide skeleton now
     setLoading(false);
 
-    // Track app_open engagement event — powers risk scoring system
-    // Called once per loadData() which fires on every home page visit
-    await trackEvent(user.id, 'app_open');
+    // Single app_open track per load
+    trackEvent(user.id, 'app_open');
 
-
-
-    // Recently completed tasks
+    // Non-critical fetches after render
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('is_complete', true)
+    supabase.from('tasks').select('*')
+      .eq('user_id', user.id).eq('is_complete', true)
       .gte('completed_at', sevenDaysAgo.toISOString())
-      .order('completed_at', { ascending: false })
-      .limit(5)
+      .order('completed_at', { ascending: false }).limit(5)
       .then(({ data }) => { setCompletedTasks(data || []); });
 
-    // Teams
-    supabase
-      .from('team_members')
-      .select('team_id, role')
-      .eq('user_id', user.id)
+    supabase.from('team_members').select('team_id, role').eq('user_id', user.id)
       .then(async ({ data: memberships, error }) => {
         if (error || !memberships || memberships.length === 0) return;
         const teamIds = memberships.map((m: any) => m.team_id);
@@ -328,8 +252,6 @@ export default function HomePage() {
         setTeams(merged);
       });
   };
-
-  // ── Notifications ─────────────────────────────────────────────────────────
 
   const loadNotifications = async () => {
     if (!user) return;
@@ -346,11 +268,8 @@ export default function HomePage() {
 
   const markAllRead = async () => {
     if (!user) return;
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false);
+    await supabase.from('notifications').update({ is_read: true })
+      .eq('user_id', user.id).eq('is_read', false);
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
@@ -361,62 +280,39 @@ export default function HomePage() {
 
   const handleContactRequest = async (notif: AppNotification, accept: boolean) => {
     if (!notif.sender_id || !user) return;
-
     if (accept) {
-      const { data: existing } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('contact_id', notif.sender_id)
-        .maybeSingle();
-
+      const { data: existing } = await supabase.from('contacts').select('id')
+        .eq('user_id', user.id).eq('contact_id', notif.sender_id).maybeSingle();
       if (!existing) {
         await supabase.from('contacts').insert([
           { user_id: user.id, contact_id: notif.sender_id },
           { user_id: notif.sender_id, contact_id: user.id },
         ]);
       }
-
-      await supabase
-        .from('contact_requests')
-        .update({ status: 'accepted' })
-        .eq('sender_id', notif.sender_id)
-        .eq('receiver_id', user.id);
-
+      await supabase.from('contact_requests').update({ status: 'accepted' })
+        .eq('sender_id', notif.sender_id).eq('receiver_id', user.id);
       toast.success('Contact added!');
     } else {
-      await supabase
-        .from('contact_requests')
-        .update({ status: 'declined' })
-        .eq('sender_id', notif.sender_id)
-        .eq('receiver_id', user.id);
-
+      await supabase.from('contact_requests').update({ status: 'declined' })
+        .eq('sender_id', notif.sender_id).eq('receiver_id', user.id);
       toast.success('Request declined');
     }
-
     await markRead(notif.id);
     setNotifications(prev => prev.filter(n => n.id !== notif.id));
   };
 
-  // ── Tasks ─────────────────────────────────────────────────────────────────
-
   const toggleTaskComplete = async (task: Task) => {
     if (!task.is_complete) {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ is_complete: true, completed_at: new Date().toISOString() })
-        .eq('id', task.id);
+      const { error } = await supabase.from('tasks')
+        .update({ is_complete: true, completed_at: new Date().toISOString() }).eq('id', task.id);
       if (error) { toast.error('Could not update task'); return; }
       setTasks(prev => prev.filter(t => t.id !== task.id));
       setCompletedTasks(prev => [{ ...task, is_complete: true }, ...prev]);
-      // Track task completion — risk scoring monitors this signal
-      trackEvent(user.id, 'task_complete', { task_id: task.id });
+      trackEvent(user!.id, 'task_complete', { task_id: task.id });
       toast.success('Task completed ✓');
     } else {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ is_complete: false, completed_at: null })
-        .eq('id', task.id);
+      const { error } = await supabase.from('tasks')
+        .update({ is_complete: false, completed_at: null }).eq('id', task.id);
       if (error) { toast.error('Could not update task'); return; }
       setCompletedTasks(prev => prev.filter(t => t.id !== task.id));
       setTasks(prev =>
@@ -428,39 +324,30 @@ export default function HomePage() {
     }
   };
 
-  // ── Effects ───────────────────────────────────────────────────────────────
-
   useEffect(() => { loadData(); }, [user]);
 
   useEffect(() => {
     if (!user) return;
     loadNotifications();
-    const channel = supabase
-      .channel('notifications')
+    const channel = supabase.channel('notifications')
       .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
+        event: 'INSERT', schema: 'public', table: 'notifications',
         filter: `user_id=eq.${user.id}`,
       }, (payload) => {
         setNotifications(prev => [payload.new as AppNotification, ...prev]);
-      })
-      .subscribe();
+      }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   useEffect(() => {
     if (!showNotifications) return;
     const handler = (e: MouseEvent) => {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node))
         setShowNotifications(false);
-      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showNotifications]);
-
-  // ── Derived values ────────────────────────────────────────────────────────
 
   const streak = profile?.streak_count || 0;
 
@@ -488,12 +375,10 @@ export default function HomePage() {
   const showLmsPrompt = lmsConnected === false && !loading && events.length === 0;
   const showUpgradeBanner = sessionCount >= 3;
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="pb-28 animate-fade-in bg-background min-h-screen">
 
-      {/* ── Notification Drawer ── */}
+      {/* Notification Drawer */}
       {showNotifications && (
         <div className="fixed inset-0 z-50 bg-black/60">
           <div ref={notifRef} className="absolute right-0 top-0 h-full w-full max-w-sm bg-[#0a0a0a] border-l border-white/5 flex flex-col">
@@ -501,22 +386,18 @@ export default function HomePage() {
               <p className="font-heading font-bold text-base">Notifications</p>
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="text-xs text-primary font-medium">
-                    Mark all read
-                  </button>
+                  <button onClick={markAllRead} className="text-xs text-primary font-medium">Mark all read</button>
                 )}
-                <button
-                  onClick={() => setShowNotifications(false)}
+                <button onClick={() => setShowNotifications(false)}
                   className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
                   <X className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
             </div>
-
             <div className="flex-1 overflow-y-auto">
               {loadingNotifications ? (
                 <div className="space-y-2 p-4">
-                  {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}
+                  {[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-white/5 animate-pulse" />)}
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 gap-3">
@@ -526,9 +407,7 @@ export default function HomePage() {
               ) : (
                 <div className="divide-y divide-white/5">
                   {notifications.map(notif => (
-                    <div
-                      key={notif.id}
-                      className={cn('px-5 py-4', !notif.is_read && 'bg-primary/5')}>
+                    <div key={notif.id} className={cn('px-5 py-4', !notif.is_read && 'bg-primary/5')}>
                       <div className="flex items-start gap-3">
                         <span className="text-xl shrink-0 mt-0.5">
                           {NOTIFICATION_ICONS[notif.notification_type] || '💬'}
@@ -539,41 +418,28 @@ export default function HomePage() {
                             <span className="text-[10px] text-white/30 shrink-0">{timeAgo(notif.created_at)}</span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{notif.body}</p>
-
                           {notif.notification_type === 'contact_request' && !notif.is_read && (
                             <div className="flex gap-2 mt-2">
-                              <button
-                                onClick={() => handleContactRequest(notif, true)}
+                              <button onClick={() => handleContactRequest(notif, true)}
                                 className="flex items-center gap-1 bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-semibold">
                                 <Check className="w-3 h-3" />Accept
                               </button>
-                              <button
-                                onClick={() => handleContactRequest(notif, false)}
+                              <button onClick={() => handleContactRequest(notif, false)}
                                 className="flex items-center gap-1 bg-secondary text-muted-foreground px-3 py-1.5 rounded-lg text-xs font-semibold">
                                 <X className="w-3 h-3" />Decline
                               </button>
                             </div>
                           )}
-
                           {notif.notification_type === 'team_invite' && !notif.is_read && notif.related_team_id && (
-                            <button
-                              onClick={() => { navigate(`/team/${notif.related_team_id}`); markRead(notif.id); setShowNotifications(false); }}
-                              className="mt-2 text-xs text-primary font-semibold">
-                              View Team →
-                            </button>
+                            <button onClick={() => { navigate(`/team/${notif.related_team_id}`); markRead(notif.id); setShowNotifications(false); }}
+                              className="mt-2 text-xs text-primary font-semibold">View Team →</button>
                           )}
-
                           {(notif.notification_type === 'deadline_reminder' || notif.notification_type === 'class_reminder') && (
-                            <button
-                              onClick={() => { navigate('/plan'); markRead(notif.id); setShowNotifications(false); }}
-                              className="mt-2 text-xs text-primary font-semibold">
-                              View in Plan →
-                            </button>
+                            <button onClick={() => { navigate('/plan'); markRead(notif.id); setShowNotifications(false); }}
+                              className="mt-2 text-xs text-primary font-semibold">View in Plan →</button>
                           )}
                         </div>
-                        {!notif.is_read && (
-                          <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />
-                        )}
+                        {!notif.is_read && <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1.5" />}
                       </div>
                     </div>
                   ))}
@@ -584,25 +450,22 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Top Bar ── */}
+      {/* Top Bar */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3">
         <div className="flex items-center gap-2">
           <span className="font-heading text-xl font-black text-primary tracking-tight">rute</span>
-          <button
-            onClick={() => navigate('/chat')}
+          <button onClick={() => navigate('/chat')}
             className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
             <MessageCircle className="w-4 h-4 text-muted-foreground" />
           </button>
           <span className="text-base font-semibold text-foreground">Home</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate('/plan')}
+          <button onClick={() => navigate('/plan')}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center">
             <Plus className="w-4 h-4 text-foreground" />
           </button>
-          <button
-            onClick={() => { setShowNotifications(true); markAllRead(); }}
+          <button onClick={() => { setShowNotifications(true); markAllRead(); }}
             className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center relative">
             <Bell className="w-4 h-4 text-foreground" />
             {unreadCount > 0 && (
@@ -614,22 +477,18 @@ export default function HomePage() {
 
       <div className="px-4 space-y-3">
 
-        {/* ── Errors ── */}
         {Object.entries(errors).map(([key, msg]) => (
           <ErrorCard key={key} message={msg} onRetry={loadData} />
         ))}
 
-        {/* ── Tonight I'm Going Out ── */}
-        <button
-          onClick={() => setNightMode(!nightMode)}
-          className={cn(
-            'relative w-full rounded-2xl p-4 overflow-hidden transition-all border text-left',
-            nightMode ? 'border-primary/30' : 'border-white/5'
-          )}
+        {/* Tonight I'm Going Out */}
+        <button onClick={() => setNightMode(!nightMode)}
+          className={cn('relative w-full rounded-2xl p-4 overflow-hidden transition-all border text-left',
+            nightMode ? 'border-primary/30' : 'border-white/5')}
           style={{ background: 'linear-gradient(135deg, hsl(260 50% 10%) 0%, hsl(240 60% 7%) 50%, hsl(280 40% 12%) 100%)' }}>
           <div className="absolute inset-0 opacity-50">
-            {[[20, 15], [60, 30], [80, 10], [35, 60], [90, 50], [15, 75]].map(([l, t], i) => (
-              <div key={i} className="absolute w-0.5 h-0.5 bg-white rounded-full" style={{ left: `${l}%`, top: `${t}%` }} />
+            {[[20,15],[60,30],[80,10],[35,60],[90,50],[15,75]].map(([l,t],i) => (
+              <div key={i} className="absolute w-0.5 h-0.5 bg-white rounded-full" style={{ left:`${l}%`, top:`${t}%` }} />
             ))}
           </div>
           <div className="relative flex items-center gap-3">
@@ -641,24 +500,18 @@ export default function HomePage() {
                 {nightMode ? 'Night mode on' : "Tonight I'm Going Out"}
               </p>
               <p className="text-[11px] text-white/50 mt-0.5">
-                {nightMode
-                  ? "We'll keep tomorrow light"
-                  : 'Suggestions cleared · Study rescheduled · Night yours'}
+                {nightMode ? "We'll keep tomorrow light" : 'Suggestions cleared · Study rescheduled · Night yours'}
               </p>
             </div>
-            {nightMode ? (
-              <span className="text-xs text-primary font-semibold shrink-0">Active</span>
-            ) : (
-              <span className="text-xs text-white/40 font-medium shrink-0 border border-white/10 px-2 py-1 rounded-full">
-                Tap when going out
-              </span>
-            )}
+            {nightMode
+              ? <span className="text-xs text-primary font-semibold shrink-0">Active</span>
+              : <span className="text-xs text-white/40 font-medium shrink-0 border border-white/10 px-2 py-1 rounded-full">Tap when going out</span>
+            }
           </div>
         </button>
 
-        {/* ── Hero Card ── */}
-        <div
-          className="rounded-2xl p-5 relative overflow-hidden"
+        {/* Hero Card */}
+        <div className="rounded-2xl p-5 relative overflow-hidden"
           style={{ background: 'linear-gradient(135deg, hsl(120 30% 8%) 0%, hsl(140 25% 10%) 100%)' }}>
           <div className="flex items-start justify-between mb-4">
             <div>
@@ -681,29 +534,24 @@ export default function HomePage() {
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-black/20 rounded-xl p-3 border border-white/5">
               <p className="font-heading text-2xl font-black text-primary leading-none">
-                {freeHours > 0 ? `${freeHours}.${Math.round(freeMin / 6)}h` : `${freeMin}m`}
+                {freeHours > 0 ? `${freeHours}.${Math.round(freeMin/6)}h` : `${freeMin}m`}
               </p>
               <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Free Today</p>
             </div>
             <div className="bg-black/20 rounded-xl p-3 border border-white/5">
-              <p className="font-heading text-2xl font-black text-yellow-400 leading-none">
-                {todayDeadlines.length}
-              </p>
+              <p className="font-heading text-2xl font-black text-yellow-400 leading-none">{todayDeadlines.length}</p>
               <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Due Today</p>
             </div>
             <div className="bg-black/20 rounded-xl p-3 border border-white/5">
-              <p className="font-heading text-2xl font-black text-red-400 leading-none">
-                {overdueTasks.length}
-              </p>
+              <p className="font-heading text-2xl font-black text-red-400 leading-none">{overdueTasks.length}</p>
               <p className="text-[10px] text-white/40 uppercase tracking-wider mt-1">Overdue</p>
             </div>
           </div>
         </div>
 
-        {/* ── Sleep & Activities ── */}
+        {/* Sleep & Activities */}
         {(sleepSchedule || activities.length > 0) && (
-          <div
-            className="rounded-2xl p-4 space-y-3"
+          <div className="rounded-2xl p-4 space-y-3"
             style={{ background: 'linear-gradient(135deg, hsl(240 30% 8%) 0%, hsl(260 25% 10%) 100%)' }}>
             {sleepSchedule && (
               <div className="flex items-center gap-3">
@@ -726,8 +574,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {activities.map((a: string) => (
-                    <span
-                      key={a}
+                    <span key={a}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-white/70">
                       <span>{ACTIVITY_EMOJIS[a] || '✨'}</span>{a}
                     </span>
@@ -738,10 +585,9 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── LMS Connect Prompt ── */}
+        {/* LMS Connect Prompt */}
         {showLmsPrompt && (
-          <button
-            onClick={() => navigate('/lms-settings')}
+          <button onClick={() => navigate('/lms-settings')}
             className="w-full rounded-2xl p-4 border border-primary/20 text-left"
             style={{ background: 'linear-gradient(135deg, hsl(260 30% 8%) 0%, hsl(280 25% 10%) 100%)' }}>
             <p className="font-bold text-sm text-white">Connect your university 📅</p>
@@ -749,13 +595,12 @@ export default function HomePage() {
           </button>
         )}
 
-        {/* ── Tasks & Deadlines ── */}
+        {/* Tasks & Deadlines */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Tasks & Deadlines</p>
             <Link to="/plan" className="text-[10px] text-white/30 hover:text-primary transition-colors">See all →</Link>
           </div>
-
           {visibleTasks.length === 0 && completedTasks.length === 0 ? (
             <div className="glass-card rounded-2xl p-5 text-center">
               <p className="font-heading font-bold text-sm mb-1">No tasks yet</p>
@@ -768,38 +613,27 @@ export default function HomePage() {
                 const label = getTaskLabel(task.due_date!);
                 const badgeClass = getTaskBadgeClass(status);
                 return (
-                  <button
-                    key={task.id}
-                    onClick={() => toggleTaskComplete(task)}
+                  <button key={task.id} onClick={() => toggleTaskComplete(task)}
                     className="flex items-center gap-3 glass-card rounded-xl px-3 py-3 w-full text-left hover:bg-white/5 transition-colors">
                     <div className="w-4 h-4 rounded-md border-2 border-white/20 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-white leading-tight truncate">
-                        {cleanTitle(task.title)}
-                      </p>
+                      <p className="font-semibold text-sm text-white leading-tight truncate">{cleanTitle(task.title)}</p>
                     </div>
-                    <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', badgeClass)}>
-                      {label}
-                    </span>
+                    <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', badgeClass)}>{label}</span>
                   </button>
                 );
               })}
-
               {completedTasks.length > 0 && (
                 <>
                   <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
                   {completedTasks.map(task => (
-                    <button
-                      key={task.id}
-                      onClick={() => toggleTaskComplete(task)}
+                    <button key={task.id} onClick={() => toggleTaskComplete(task)}
                       className="flex items-center gap-3 glass-card rounded-xl px-3 py-3 w-full text-left opacity-50 hover:opacity-70 transition-opacity">
                       <div className="w-4 h-4 rounded-md bg-primary border-2 border-primary flex items-center justify-center shrink-0">
                         <CheckSquare className="w-2.5 h-2.5 text-primary-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-white leading-tight truncate line-through">
-                          {cleanTitle(task.title)}
-                        </p>
+                        <p className="font-semibold text-sm text-white leading-tight truncate line-through">{cleanTitle(task.title)}</p>
                       </div>
                       <span className="text-[10px] text-white/30">Done</span>
                     </button>
@@ -810,7 +644,7 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* ── Today's Schedule ── */}
+        {/* Today's Schedule */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Today</p>
@@ -818,7 +652,7 @@ export default function HomePage() {
           </div>
           {loading ? (
             <div className="space-y-2">
-              {[1, 2, 3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}
+              {[1,2,3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}
             </div>
           ) : events.length === 0 ? (
             <div className="glass-card rounded-2xl p-6 text-center">
@@ -845,11 +679,8 @@ export default function HomePage() {
                       </p>
                     </div>
                     {label && (
-                      <span
-                        className="text-[10px] font-bold px-2 py-1 rounded-full self-center shrink-0"
-                        style={{ backgroundColor: `${colour}20`, color: colour }}>
-                        {label}
-                      </span>
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-full self-center shrink-0"
+                        style={{ backgroundColor: `${colour}20`, color: colour }}>{label}</span>
                     )}
                   </div>
                 );
@@ -858,7 +689,7 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* ── Teams ── */}
+        {/* Teams */}
         {teams.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -867,9 +698,7 @@ export default function HomePage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               {teams.slice(0, 4).map(team => (
-                <button
-                  key={team.id}
-                  onClick={() => navigate(`/team/${team.id}`)}
+                <button key={team.id} onClick={() => navigate(`/team/${team.id}`)}
                   className="glass-card rounded-2xl p-4 text-left hover:bg-white/5 transition-colors">
                   <span className="text-3xl">{team.emoji || '🏆'}</span>
                   <p className="font-bold text-sm text-white mt-2 leading-tight">{team.name}</p>
@@ -881,10 +710,9 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── Upgrade Banner (session 3+) ── */}
+        {/* Upgrade Banner */}
         {showUpgradeBanner && (
-          <div
-            className="rounded-2xl p-4 flex items-center gap-3 border border-yellow-500/20"
+          <div className="rounded-2xl p-4 flex items-center gap-3 border border-yellow-500/20"
             style={{ background: 'linear-gradient(135deg, hsl(45 50% 8%) 0%, hsl(30 40% 6%) 100%)' }}>
             <span className="text-xl shrink-0">⭐</span>
             <div className="flex-1 min-w-0">
