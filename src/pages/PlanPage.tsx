@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format, isPast, isToday, differenceInDays } from 'date-fns';
-import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Calendar, CheckSquare, Target, Plus, Trophy, X, AlertTriangle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn, cleanTitle } from '@/lib/utils';
@@ -19,6 +19,16 @@ interface Goal {
   is_complete: boolean | null;
   completed_at: string | null;
   created_at: string;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  due_date: string | null;
+  priority: string;
+  course_code: string | null;
+  is_complete: boolean;
+  completed_at: string | null;
 }
 
 function getTaskStatus(dueDate: string) {
@@ -45,10 +55,10 @@ function getTaskLabel(dueDate: string) {
 
 function getTaskColours(status: string) {
   switch (status) {
-    case 'overdue': return { badge: 'bg-red-500/15 text-red-400', dot: 'bg-red-500' };
-    case 'today': return { badge: 'bg-yellow-400/15 text-yellow-400', dot: 'bg-yellow-400' };
-    case 'soon': return { badge: 'bg-orange-400/15 text-orange-400', dot: 'bg-orange-400' };
-    default: return { badge: 'bg-white/5 text-white/40', dot: 'bg-white/20' };
+    case 'overdue': return { badge: 'bg-red-500/15 text-red-400' };
+    case 'today': return { badge: 'bg-yellow-400/15 text-yellow-400' };
+    case 'soon': return { badge: 'bg-orange-400/15 text-orange-400' };
+    default: return { badge: 'bg-white/5 text-white/40' };
   }
 }
 
@@ -70,23 +80,34 @@ export default function PlanPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<SubTab>('schedule');
   const [events, setEvents] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [completedTasks, setCompletedTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showOldOverdue, setShowOldOverdue] = useState(false);
+  const [revealedId, setRevealedId] = useState<string | null>(null);
 
+  // Add goal
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoalTitle, setNewGoalTitle] = useState('');
   const [newGoalPeriod, setNewGoalPeriod] = useState('30');
 
+  // Add task
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDue, setNewTaskDue] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState('normal');
   const [newTaskCourse, setNewTaskCourse] = useState('');
 
+  // Edit task
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskDue, setEditTaskDue] = useState('');
+  const [editTaskPriority, setEditTaskPriority] = useState('normal');
+  const [editTaskCourse, setEditTaskCourse] = useState('');
+
+  // Add event
   const [showAddEvent, setShowAddEvent] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventStart, setNewEventStart] = useState('');
@@ -123,8 +144,8 @@ export default function PlanPage() {
           .order('completed_at', { ascending: false }).limit(10),
       ]).then(([incompleteRes, completedRes]) => {
         if (incompleteRes.error) setError('Could not load tasks. Pull to refresh.');
-        setTasks(incompleteRes.data || []);
-        setCompletedTasks(completedRes.data || []);
+        setTasks((incompleteRes.data as Task[]) || []);
+        setCompletedTasks((completedRes.data as Task[]) || []);
         setLoading(false);
       });
     } else {
@@ -142,6 +163,8 @@ export default function PlanPage() {
 
   useEffect(() => { loadTab(); }, [user, activeTab]);
 
+  // ── Task CRUD ────────────────────────────────────────────────────────────────
+
   const addTask = async () => {
     if (!newTaskTitle.trim() || !user) return;
     const { data, error } = await supabase.from('tasks').insert({
@@ -153,59 +176,44 @@ export default function PlanPage() {
       is_complete: false,
     }).select().single();
     if (error) { toast.error('Could not create task. Please try again.'); return; }
-    setTasks(prev => [data, ...prev]);
+    setTasks(prev => [data as Task, ...prev]);
     setNewTaskTitle(''); setNewTaskDue(''); setNewTaskPriority('normal'); setNewTaskCourse('');
     setShowAddTask(false);
     trackEvent(user.id, 'task_add', { task_id: data.id });
     toast.success('Task added');
   };
 
-  const addEvent = async () => {
-    if (!newEventTitle.trim() || !newEventStart || !user) return;
-    const { data, error } = await supabase.from('calendar_events').insert({
-      user_id: user.id,
-      title: newEventTitle.trim(),
-      start_time: newEventStart,
-      end_time: newEventEnd || newEventStart,
-      location: newEventLocation || null,
-      event_type: 'personal',
-      source: 'manual',
-    }).select().single();
-    if (error) { toast.error('Could not create event. Please try again.'); return; }
-    setEvents(prev => [...prev, data].sort((a, b) =>
-      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-    ));
-    setNewEventTitle(''); setNewEventStart(''); setNewEventEnd(''); setNewEventLocation('');
-    setShowAddEvent(false);
-    toast.success('Event added');
+  const openEditTask = (task: Task) => {
+    setEditingTask(task);
+    setEditTaskTitle(task.title);
+    setEditTaskDue(task.due_date ? task.due_date.slice(0, 16) : '');
+    setEditTaskPriority(task.priority || 'normal');
+    setEditTaskCourse(task.course_code || '');
+    setRevealedId(null);
   };
 
-  const addGoal = async () => {
-    if (!newGoalTitle.trim() || !user) return;
-    const { data, error } = await supabase.from('goals').insert({
-      user_id: user.id,
-      title: newGoalTitle.trim(),
-      period_days: parseInt(newGoalPeriod) || 30,
-      start_date: new Date().toISOString().split('T')[0],
-    }).select().single();
-    if (error) { toast.error('Could not create goal. Please try again.'); return; }
-    setGoals(prev => [data as Goal, ...prev]);
-    setNewGoalTitle(''); setNewGoalPeriod('30'); setShowAddGoal(false);
-    toast.success('Goal added');
+  const saveEditTask = async () => {
+    if (!editingTask || !editTaskTitle.trim()) return;
+    const { error } = await supabase.from('tasks').update({
+      title: editTaskTitle.trim(),
+      due_date: editTaskDue || null,
+      priority: editTaskPriority,
+      course_code: editTaskCourse || null,
+    }).eq('id', editingTask.id);
+    if (error) { toast.error('Could not update task'); return; }
+    const updated = { ...editingTask, title: editTaskTitle.trim(), due_date: editTaskDue || null, priority: editTaskPriority, course_code: editTaskCourse || null };
+    setTasks(prev => prev.map(t => t.id === editingTask.id ? updated : t));
+    setEditingTask(null);
+    toast.success('Task updated');
   };
 
-  const toggleGoal = async (goal: Goal) => {
-    const isComplete = !goal.is_complete;
-    const { error } = await supabase.from('goals').update({
-      is_complete: isComplete,
-      completed_at: isComplete ? new Date().toISOString() : null,
-    }).eq('id', goal.id);
-    if (error) { toast.error('Could not update goal'); return; }
-    setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
-    if (isComplete) {
-      trackEvent(user!.id, 'goal_complete', { goal_id: goal.id });
-      toast.success(`🎉 Goal completed: ${goal.title}`);
-    }
+  const deleteTask = async (id: string) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (error) { toast.error('Could not delete task'); return; }
+    setTasks(prev => prev.filter(t => t.id !== id));
+    setCompletedTasks(prev => prev.filter(t => t.id !== id));
+    setRevealedId(null);
+    toast.success('Task deleted');
   };
 
   const toggleTask = async (id: string, isComplete: boolean) => {
@@ -234,6 +242,79 @@ export default function PlanPage() {
     }
   };
 
+  // ── Event CRUD ───────────────────────────────────────────────────────────────
+
+  const addEvent = async () => {
+    if (!newEventTitle.trim() || !newEventStart || !user) return;
+    const { data, error } = await supabase.from('calendar_events').insert({
+      user_id: user.id,
+      title: newEventTitle.trim(),
+      start_time: newEventStart,
+      end_time: newEventEnd || newEventStart,
+      location: newEventLocation || null,
+      event_type: 'personal',
+      source: 'manual',
+    }).select().single();
+    if (error) { toast.error('Could not create event. Please try again.'); return; }
+    setEvents(prev => [...prev, data].sort((a, b) =>
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    ));
+    setNewEventTitle(''); setNewEventStart(''); setNewEventEnd(''); setNewEventLocation('');
+    setShowAddEvent(false);
+    toast.success('Event added');
+  };
+
+  const deleteEvent = async (id: string) => {
+    const { error } = await supabase.from('calendar_events').delete().eq('id', id);
+    if (error) { toast.error('Could not delete event'); return; }
+    setEvents(prev => prev.filter(e => e.id !== id));
+    setRevealedId(null);
+    toast.success('Event deleted');
+  };
+
+  // ── Goal CRUD ────────────────────────────────────────────────────────────────
+
+  const addGoal = async () => {
+    if (!newGoalTitle.trim() || !user) return;
+    const { data, error } = await supabase.from('goals').insert({
+      user_id: user.id,
+      title: newGoalTitle.trim(),
+      period_days: parseInt(newGoalPeriod) || 30,
+      start_date: new Date().toISOString().split('T')[0],
+    }).select().single();
+    if (error) { toast.error('Could not create goal. Please try again.'); return; }
+    setGoals(prev => [data as Goal, ...prev]);
+    setNewGoalTitle(''); setNewGoalPeriod('30'); setShowAddGoal(false);
+    toast.success('Goal added');
+  };
+
+  const deleteGoal = async (id: string) => {
+    const { error } = await supabase.from('goals').delete().eq('id', id);
+    if (error) { toast.error('Could not delete goal'); return; }
+    setGoals(prev => prev.filter(g => g.id !== id));
+    setRevealedId(null);
+    toast.success('Goal deleted');
+  };
+
+  const toggleGoal = async (goal: Goal) => {
+    const isComplete = !goal.is_complete;
+    const { error } = await supabase.from('goals').update({
+      is_complete: isComplete,
+      completed_at: isComplete ? new Date().toISOString() : null,
+    }).eq('id', goal.id);
+    if (error) { toast.error('Could not update goal'); return; }
+    setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
+    if (isComplete) {
+      trackEvent(user!.id, 'goal_complete', { goal_id: goal.id });
+      toast.success(`🎉 Goal completed: ${goal.title}`);
+    }
+  };
+
+  const toggleReveal = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRevealedId(prev => prev === id ? null : id);
+  };
+
   const tabs = [
     { key: 'schedule' as SubTab, label: 'Schedule', icon: Calendar },
     { key: 'tasks' as SubTab, label: 'Tasks', icon: CheckSquare },
@@ -253,15 +334,45 @@ export default function PlanPage() {
   );
   const undatedTasks = tasks.filter(t => !t.due_date);
 
+  const TaskRow = ({ t, dimmed = false }: { t: Task; dimmed?: boolean }) => {
+    const status = t.due_date ? getTaskStatus(t.due_date) : 'upcoming';
+    const label = t.due_date ? getTaskLabel(t.due_date) : 'No deadline';
+    const colours = getTaskColours(status);
+    const revealed = revealedId === t.id;
+    return (
+      <div className={cn('relative overflow-hidden rounded-xl', dimmed && 'opacity-60')}>
+        <div className={cn('glass-card rounded-xl p-4 flex items-center gap-3 transition-transform duration-200', revealed && '-translate-x-20')}>
+          <button onClick={() => toggleTask(t.id, t.is_complete)}
+            className="w-5 h-5 rounded-md border-2 border-muted-foreground flex items-center justify-center shrink-0" />
+          <div className="flex-1 min-w-0" onClick={e => toggleReveal(t.id, e)}>
+            <p className="font-medium text-sm truncate">{cleanTitle(t.title)}</p>
+            {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
+          </div>
+          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>{label}</span>
+        </div>
+        {revealed && (
+          <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-2">
+            <button onClick={() => openEditTask(t)} className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+              <Pencil className="w-4 h-4 text-blue-400" />
+            </button>
+            <button onClick={() => deleteTask(t.id)} className="w-9 h-9 rounded-xl bg-red-500/20 flex items-center justify-center">
+              <Trash2 className="w-4 h-4 text-red-400" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="px-5 pt-14 animate-fade-in pb-24">
+    <div className="px-5 pt-14 animate-fade-in pb-24" onClick={() => setRevealedId(null)}>
       <h1 className="font-heading text-2xl font-bold mb-5">Plan</h1>
 
       <div className="flex gap-2 mb-5">
         {tabs.map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            className={cn("flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all",
-              activeTab === tab.key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground")}>
+            className={cn('flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all',
+              activeTab === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground')}>
             <tab.icon className="w-3.5 h-3.5" />{tab.label}
           </button>
         ))}
@@ -269,12 +380,51 @@ export default function PlanPage() {
 
       {error && <ErrorBanner message={error} onRetry={loadTab} />}
 
+      {/* Edit task modal */}
+      {editingTask && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end justify-center p-4" onClick={() => setEditingTask(null)}>
+          <div className="glass-card rounded-2xl p-4 space-y-3 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-sm">Edit Task</p>
+              <button onClick={() => setEditingTask(null)}><X className="w-4 h-4 text-muted-foreground" /></button>
+            </div>
+            <input type="text" value={editTaskTitle} onChange={e => setEditTaskTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveEditTask()}
+              className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <input type="text" placeholder="Course code (optional)" value={editTaskCourse}
+              onChange={e => setEditTaskCourse(e.target.value)}
+              className="w-full bg-secondary/60 rounded-xl px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-muted-foreground">Due date</label>
+                <input type="datetime-local" value={editTaskDue} onChange={e => setEditTaskDue(e.target.value)}
+                  className="w-full bg-secondary/60 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Priority</label>
+                <select value={editTaskPriority} onChange={e => setEditTaskPriority(e.target.value)}
+                  className="w-full bg-secondary/60 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1">
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveEditTask} className="flex-1 bg-primary text-primary-foreground rounded-xl py-2 text-sm font-semibold">Save</button>
+              <button onClick={() => setEditingTask(null)} className="px-4 bg-secondary text-muted-foreground rounded-xl py-2 text-sm">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {[1,2,3].map(i => <div key={i} className="glass-card rounded-xl p-4 animate-pulse h-16" />)}
         </div>
       ) : (
         <>
+          {/* Schedule */}
           {activeTab === 'schedule' && (
             <div className="space-y-2">
               {showAddEvent ? (
@@ -314,21 +464,35 @@ export default function PlanPage() {
               )}
               {events.length === 0 ? (
                 <p className="text-muted-foreground text-sm text-center py-10">No upcoming events</p>
-              ) : events.map(e => (
-                <div key={e.id} className="glass-card rounded-xl p-4 flex items-center gap-3">
-                  <div className="w-1 h-10 rounded-full bg-primary" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{e.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(e.start_time), 'MMM d · h:mm a')}
-                      {e.location && ` · ${e.location}`}
-                    </p>
+              ) : events.map(e => {
+                const revealed = revealedId === e.id;
+                return (
+                  <div key={e.id} className="relative overflow-hidden rounded-xl">
+                    <div className={cn('glass-card rounded-xl p-4 flex items-center gap-3 transition-transform duration-200', revealed && '-translate-x-12')}
+                      onClick={ev => toggleReveal(e.id, ev)}>
+                      <div className="w-1 h-10 rounded-full bg-primary" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{e.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(e.start_time), 'MMM d · h:mm a')}
+                          {e.location && ` · ${e.location}`}
+                        </p>
+                      </div>
+                    </div>
+                    {revealed && (
+                      <div className="absolute right-0 top-0 bottom-0 flex items-center pr-2">
+                        <button onClick={() => deleteEvent(e.id)} className="w-9 h-9 rounded-xl bg-red-500/20 flex items-center justify-center">
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
+          {/* Tasks */}
           {activeTab === 'tasks' && (
             <div className="space-y-2">
               {showAddTask ? (
@@ -376,24 +540,7 @@ export default function PlanPage() {
                 <p className="text-muted-foreground text-sm text-center py-10">All caught up!</p>
               ) : (
                 <>
-                  {datedTasks.map(t => {
-                    const status = getTaskStatus(t.due_date);
-                    const label = getTaskLabel(t.due_date);
-                    const colours = getTaskColours(status);
-                    return (
-                      <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                        className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
-                        <div className="w-5 h-5 rounded-md border-2 border-muted-foreground flex items-center justify-center shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{cleanTitle(t.title)}</p>
-                          {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
-                        </div>
-                        <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>
-                          {label}
-                        </span>
-                      </button>
-                    );
-                  })}
+                  {datedTasks.map(t => <TaskRow key={t.id} t={t} />)}
 
                   {oldOverdueTasks.length > 0 && (
                     <>
@@ -404,58 +551,43 @@ export default function PlanPage() {
                         </p>
                         <span className="text-[10px] text-white/20">{showOldOverdue ? '▲ hide' : '▶ show'}</span>
                       </button>
-                      {showOldOverdue && oldOverdueTasks.map(t => {
-                        const label = getTaskLabel(t.due_date);
-                        return (
-                          <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                            className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left opacity-60">
-                            <div className="w-5 h-5 rounded-md border-2 border-red-500/40 flex items-center justify-center shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate text-white/60">{cleanTitle(t.title)}</p>
-                              {t.course_code && <p className="text-xs text-muted-foreground/60">{t.course_code}</p>}
-                            </div>
-                            <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 bg-red-500/10 text-red-400/60">
-                              {label}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      {showOldOverdue && oldOverdueTasks.map(t => <TaskRow key={t.id} t={t} dimmed />)}
                     </>
                   )}
 
                   {undatedTasks.length > 0 && (
                     <>
                       <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold pt-2">Someday</p>
-                      {undatedTasks.map(t => (
-                        <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                          className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left">
-                          <div className="w-5 h-5 rounded-md border-2 border-muted-foreground/40 flex items-center justify-center shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate text-muted-foreground">{cleanTitle(t.title)}</p>
-                            {t.course_code && <p className="text-xs text-muted-foreground/60">{t.course_code}</p>}
-                          </div>
-                          <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 bg-white/5 text-white/30">
-                            No deadline
-                          </span>
-                        </button>
-                      ))}
+                      {undatedTasks.map(t => <TaskRow key={t.id} t={t} />)}
                     </>
                   )}
 
                   {completedTasks.length > 0 && (
                     <>
                       <p className="text-[10px] text-white/20 uppercase tracking-widest font-bold pt-2">Completed</p>
-                      {completedTasks.map(t => (
-                        <button key={t.id} onClick={() => toggleTask(t.id, t.is_complete)}
-                          className="glass-card rounded-xl p-4 flex items-center gap-3 w-full text-left opacity-50">
-                          <div className="w-5 h-5 rounded-md border-2 bg-primary border-primary flex items-center justify-center shrink-0">
-                            <CheckSquare className="w-3 h-3 text-primary-foreground" />
+                      {completedTasks.map(t => {
+                        const revealed = revealedId === t.id;
+                        return (
+                          <div key={t.id} className="relative overflow-hidden rounded-xl">
+                            <div className={cn('glass-card rounded-xl p-4 flex items-center gap-3 opacity-50 transition-transform duration-200', revealed && '-translate-x-12')}>
+                              <button onClick={() => toggleTask(t.id, t.is_complete)}
+                                className="w-5 h-5 rounded-md border-2 bg-primary border-primary flex items-center justify-center shrink-0">
+                                <CheckSquare className="w-3 h-3 text-primary-foreground" />
+                              </button>
+                              <div className="flex-1 min-w-0" onClick={e => toggleReveal(t.id, e)}>
+                                <p className="font-medium text-sm truncate line-through text-muted-foreground">{cleanTitle(t.title)}</p>
+                              </div>
+                            </div>
+                            {revealed && (
+                              <div className="absolute right-0 top-0 bottom-0 flex items-center pr-2">
+                                <button onClick={() => deleteTask(t.id)} className="w-9 h-9 rounded-xl bg-red-500/20 flex items-center justify-center">
+                                  <Trash2 className="w-4 h-4 text-red-400" />
+                                </button>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate line-through text-muted-foreground">{cleanTitle(t.title)}</p>
-                          </div>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </>
                   )}
                 </>
@@ -463,6 +595,7 @@ export default function PlanPage() {
             </div>
           )}
 
+          {/* Goals */}
           {activeTab === 'goals' && (
             <div className="space-y-3">
               {showAddGoal ? (
@@ -504,33 +637,45 @@ export default function PlanPage() {
                   <p className="font-heading font-bold text-base mb-1">Set your first goal</p>
                   <p className="text-muted-foreground text-xs">Track progress and stay accountable.</p>
                 </div>
-              ) : goals.map(goal => (
-                <div key={goal.id} className="glass-card rounded-2xl p-4">
-                  <div className="flex items-start justify-between mb-3 gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className={cn("font-semibold text-sm", goal.is_complete && "line-through text-muted-foreground")}>
-                        {goal.title}
-                      </p>
-                      {goal.end_date && (
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Due {format(new Date(goal.end_date), 'MMM d')}
-                        </p>
-                      )}
+              ) : goals.map(goal => {
+                const revealed = revealedId === goal.id;
+                return (
+                  <div key={goal.id} className="relative overflow-hidden rounded-2xl">
+                    <div className={cn('glass-card rounded-2xl p-4 transition-transform duration-200', revealed && '-translate-x-12')}>
+                      <div className="flex items-start justify-between mb-3 gap-2" onClick={e => toggleReveal(goal.id, e)}>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn('font-semibold text-sm', goal.is_complete && 'line-through text-muted-foreground')}>
+                            {goal.title}
+                          </p>
+                          {goal.end_date && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Due {format(new Date(goal.end_date), 'MMM d')}
+                            </p>
+                          )}
+                        </div>
+                        <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0',
+                          goal.is_complete ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground')}>
+                          {goal.period_days}d goal
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button onClick={() => toggleGoal(goal)}
+                          className={cn('px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors',
+                            goal.is_complete ? 'bg-secondary text-muted-foreground' : 'bg-primary/20 text-primary hover:bg-primary/30')}>
+                          {goal.is_complete ? 'Completed ✓' : 'Mark complete'}
+                        </button>
+                      </div>
                     </div>
-                    <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0",
-                      goal.is_complete ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground")}>
-                      {goal.period_days}d goal
-                    </span>
+                    {revealed && (
+                      <div className="absolute right-0 top-0 bottom-0 flex items-center pr-2">
+                        <button onClick={() => deleteGoal(goal.id)} className="w-9 h-9 rounded-xl bg-red-500/20 flex items-center justify-center">
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center justify-end">
-                    <button onClick={() => toggleGoal(goal)}
-                      className={cn("px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors",
-                        goal.is_complete ? "bg-secondary text-muted-foreground" : "bg-primary/20 text-primary hover:bg-primary/30")}>
-                      {goal.is_complete ? 'Completed ✓' : 'Mark complete'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
