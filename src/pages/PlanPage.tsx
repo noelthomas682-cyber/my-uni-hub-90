@@ -702,25 +702,26 @@ export default function PlanPage() {
 
                       {/* Progress controls */}
                       {!goal.is_complete && (
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
                           <button
-                            onClick={() => updateGoalProgress(goal, progress - 10)}
+                            onClick={e => { e.stopPropagation(); updateGoalProgress(goal, progress - 10); }}
                             className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
                           >−</button>
                           <input
                             type="range" min={0} max={100} step={5} value={progress}
-                            onChange={e => updateGoalProgress(goal, parseInt(e.target.value))}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); updateGoalProgress(goal, parseInt(e.target.value)); }}
                             className="flex-1 accent-primary h-1"
                           />
                           <button
-                            onClick={() => updateGoalProgress(goal, progress + 10)}
+                            onClick={e => { e.stopPropagation(); updateGoalProgress(goal, progress + 10); }}
                             className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
                           >+</button>
                         </div>
                       )}
 
                       <div className="flex items-center justify-end">
-                        <button onClick={() => toggleGoal(goal)}
+                        <button onClick={e => { e.stopPropagation(); toggleGoal(goal); }}
                           className={cn('px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors',
                             goal.is_complete ? 'bg-secondary text-muted-foreground' : 'bg-primary/20 text-primary hover:bg-primary/30')}>
                           {goal.is_complete ? 'Completed ✓' : 'Mark complete'}
