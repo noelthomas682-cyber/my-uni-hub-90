@@ -19,6 +19,7 @@ interface Goal {
   is_complete: boolean | null;
   completed_at: string | null;
   created_at: string;
+  progress: number;
 }
 
 interface Task {
@@ -296,14 +297,37 @@ export default function PlanPage() {
     toast.success('Goal deleted');
   };
 
+  const updateGoalProgress = async (goal: Goal, newProgress: number) => {
+    const clamped = Math.min(100, Math.max(0, newProgress));
+    const shouldComplete = clamped === 100;
+    const { error } = await supabase.from('goals').update({
+      progress: clamped,
+      is_complete: shouldComplete,
+      completed_at: shouldComplete ? new Date().toISOString() : null,
+    }).eq('id', goal.id);
+    if (error) { toast.error('Could not update progress'); return; }
+    setGoals(prev => prev.map(g => g.id === goal.id
+      ? { ...g, progress: clamped, is_complete: shouldComplete }
+      : g
+    ));
+    if (shouldComplete) {
+      trackEvent(user!.id, 'goal_complete', { goal_id: goal.id });
+      toast.success(`🎉 Goal completed: ${goal.title}`);
+    }
+  };
+
   const toggleGoal = async (goal: Goal) => {
     const isComplete = !goal.is_complete;
     const { error } = await supabase.from('goals').update({
       is_complete: isComplete,
+      progress: isComplete ? 100 : goal.progress,
       completed_at: isComplete ? new Date().toISOString() : null,
     }).eq('id', goal.id);
     if (error) { toast.error('Could not update goal'); return; }
-    setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, is_complete: isComplete } : g));
+    setGoals(prev => prev.map(g => g.id === goal.id
+      ? { ...g, is_complete: isComplete, progress: isComplete ? 100 : g.progress }
+      : g
+    ));
     if (isComplete) {
       trackEvent(user!.id, 'goal_complete', { goal_id: goal.id });
       toast.success(`🎉 Goal completed: ${goal.title}`);
@@ -639,6 +663,7 @@ export default function PlanPage() {
                 </div>
               ) : goals.map(goal => {
                 const revealed = revealedId === goal.id;
+                const progress = goal.progress ?? 0;
                 return (
                   <div key={goal.id} className="relative overflow-hidden rounded-2xl">
                     <div className={cn('glass-card rounded-2xl p-4 transition-transform duration-200', revealed && '-translate-x-12')}>
@@ -658,6 +683,40 @@ export default function PlanPage() {
                           {goal.period_days}d goal
                         </span>
                       </div>
+
+                      {/* Progress bar */}
+                      <div className="mb-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] text-muted-foreground">Progress</span>
+                          <span className="text-[11px] font-semibold text-primary">{progress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Progress controls */}
+                      {!goal.is_complete && (
+                        <div className="flex items-center gap-2 mb-3">
+                          <button
+                            onClick={() => updateGoalProgress(goal, progress - 10)}
+                            className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
+                          >−</button>
+                          <input
+                            type="range" min={0} max={100} step={5} value={progress}
+                            onChange={e => updateGoalProgress(goal, parseInt(e.target.value))}
+                            className="flex-1 accent-primary h-1"
+                          />
+                          <button
+                            onClick={() => updateGoalProgress(goal, progress + 10)}
+                            className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
+                          >+</button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-end">
                         <button onClick={() => toggleGoal(goal)}
                           className={cn('px-4 py-1.5 rounded-xl text-sm font-semibold transition-colors',
