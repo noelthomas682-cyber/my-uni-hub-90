@@ -365,14 +365,16 @@ export default function PlanPage() {
     const revealed = revealedId === t.id;
     return (
       <div className={cn('relative overflow-hidden rounded-xl', dimmed && 'opacity-60')}>
-        <div className={cn('glass-card rounded-xl p-4 flex items-center gap-3 transition-transform duration-200', revealed && '-translate-x-20')}>
-          <button onClick={() => toggleTask(t.id, t.is_complete)}
+        <div className={cn('glass-card rounded-xl p-4 flex items-center gap-3 transition-transform duration-200', revealed && '-translate-x-20')}
+          onClick={() => openEditTask(t)}>
+          <button onClick={e => { e.stopPropagation(); toggleTask(t.id, t.is_complete); }}
             className="w-5 h-5 rounded-md border-2 border-muted-foreground flex items-center justify-center shrink-0" />
-          <div className="flex-1 min-w-0" onClick={e => toggleReveal(t.id, e)}>
+          <div className="flex-1 min-w-0">
             <p className="font-medium text-sm truncate">{cleanTitle(t.title)}</p>
             {t.course_code && <p className="text-xs text-muted-foreground">{t.course_code}</p>}
           </div>
-          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}>{label}</span>
+          <span className={cn('text-[10px] font-bold px-2 py-1 rounded-full shrink-0', colours.badge)}
+            onClick={e => { e.stopPropagation(); toggleReveal(t.id, e); }}>{label}</span>
         </div>
         {revealed && (
           <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-2">
