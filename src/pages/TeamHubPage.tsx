@@ -276,6 +276,20 @@ export default function TeamHubPage() {
     navigate('/social');
   };
 
+  const leaveTeam = async () => {
+    if (!teamId || !user) return;
+    const { error } = await supabase.from('team_members')
+      .delete().eq('team_id', teamId).eq('user_id', user.id);
+    if (error) { toast.error('Could not leave team'); return; }
+    // Also remove from group chat if exists
+    if (conversationId) {
+      await supabase.from('conversation_members')
+        .delete().eq('conversation_id', conversationId).eq('user_id', user.id);
+    }
+    toast.success(`Left ${team.name}`);
+    navigate('/social');
+  };
+
   const openGroupChat = async () => {
     if (!conversationId || !teamId) return;
     navigate(`/chat/${conversationId}`);
@@ -606,7 +620,7 @@ export default function TeamHubPage() {
         )}
       </div>
 
-      {/* Delete Team */}
+      {/* Delete Team (captain only) */}
       {isCaptain && (
         <div className="mt-6">
           {showDeleteConfirm ? (
@@ -630,6 +644,16 @@ export default function TeamHubPage() {
               <Trash2 className="w-4 h-4" />Delete team
             </button>
           )}
+        </div>
+      )}
+
+      {/* Leave Team (members only) */}
+      {!isCaptain && (
+        <div className="mt-6">
+          <button onClick={leaveTeam}
+            className="w-full flex items-center justify-center gap-2 text-red-400 text-sm font-medium py-3 rounded-2xl border border-red-500/20 hover:bg-red-500/5 transition-colors">
+            <UserMinus className="w-4 h-4" />Leave team
+          </button>
         </div>
       )}
     </div>
