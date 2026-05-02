@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LogOut, ChevronRight, Moon, Bell, Shield, Pencil, Link, Check, X, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
+import { LogOut, ChevronRight, Moon, Sun, Bell, Shield, Pencil, Link, Check, X, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -19,9 +19,32 @@ const ACTIVITY_EMOJIS: Record<string, string> = {
   'Dancing': '💃', 'Art': '🎨', 'Meditation': '🧠',
 };
 
+function useTheme() {
+  const [isDark, setIsDark] = useState(() =>
+    document.documentElement.classList.contains('dark') ||
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+
+  const toggle = () => {
+    const next = !isDark;
+    setIsDark(next);
+    if (next) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
+
+  return { isDark, toggle };
+}
+
 export default function MePage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { isDark, toggle: toggleTheme } = useTheme();
+
   const [profile, setProfile] = useState<any>(null);
   const [sleepSchedule, setSleepSchedule] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -169,7 +192,7 @@ export default function MePage() {
     <div className="px-5 pt-14 animate-fade-in pb-24">
       <h1 className="font-heading text-2xl font-bold mb-6">Me</h1>
 
-      {/* ── Profile Card ── */}
+      {/* Profile Card */}
       <div className="glass-card rounded-2xl p-5 mb-4">
         <div className="flex items-center gap-4 mb-4">
           <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
@@ -220,7 +243,7 @@ export default function MePage() {
         )}
       </div>
 
-      {/* ── Sleep Schedule ── */}
+      {/* Sleep Schedule */}
       <div className="glass-card rounded-2xl p-5 mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -270,7 +293,7 @@ export default function MePage() {
         )}
       </div>
 
-      {/* ── Activities ── */}
+      {/* Activities */}
       <div className="glass-card rounded-2xl p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -314,24 +337,25 @@ export default function MePage() {
         )}
       </div>
 
-      {/* ── Settings ── */}
+      {/* Settings */}
       <div className="glass-card rounded-2xl overflow-hidden mb-4">
-        {[
-          { icon: Bell, label: 'Notifications', action: () => toast('Coming soon') },
-          { icon: Moon, label: 'Appearance', action: () => toast('Coming soon') },
-          { icon: Shield, label: 'Privacy & Security', action: () => toast('Coming soon') },
-          { icon: Link, label: 'Connect LMS', action: () => navigate('/lms-settings') },
-        ].map((item) => (
-          <button key={item.label} onClick={item.action}
-            className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-secondary/50 transition-colors border-b border-border/40 last:border-0">
-            <item.icon className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium flex-1">{item.label}</span>
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          </button>
-        ))}
+        {/* Appearance — built */}
+        <button onClick={toggleTheme}
+          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-secondary/50 transition-colors border-b border-border/40">
+          {isDark ? <Sun className="w-4 h-4 text-muted-foreground" /> : <Moon className="w-4 h-4 text-muted-foreground" />}
+          <span className="text-sm font-medium flex-1">Appearance</span>
+          <span className="text-xs text-muted-foreground">{isDark ? 'Dark' : 'Light'}</span>
+        </button>
+        {/* Connect LMS — built */}
+        <button onClick={() => navigate('/lms-settings')}
+          className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-secondary/50 transition-colors">
+          <Link className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium flex-1">Connect LMS</span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
       </div>
 
-      {/* ── Sign Out ── */}
+      {/* Sign Out */}
       <button onClick={signOut}
         className="w-full glass-card rounded-2xl px-5 py-4 flex items-center gap-3 text-destructive hover:bg-destructive/10 transition-colors">
         <LogOut className="w-4 h-4" />
