@@ -20,6 +20,7 @@ interface Goal {
   completed_at: string | null;
   created_at: string;
   progress: number;
+  days_completed: number;
 }
 
 interface Task {
@@ -297,17 +298,19 @@ export default function PlanPage() {
     toast.success('Goal deleted');
   };
 
-  const updateGoalProgress = async (goal: Goal, newProgress: number) => {
-    const clamped = Math.min(100, Math.max(0, newProgress));
-    const shouldComplete = clamped === 100;
+  const adjustGoalDays = async (goal: Goal, delta: number) => {
+    const newDays = Math.min(goal.period_days, Math.max(0, (goal.days_completed || 0) + delta));
+    const newProgress = Math.round((newDays / goal.period_days) * 100);
+    const shouldComplete = newDays >= goal.period_days;
     const { error } = await supabase.from('goals').update({
-      progress: clamped,
+      days_completed: newDays,
+      progress: newProgress,
       is_complete: shouldComplete,
       completed_at: shouldComplete ? new Date().toISOString() : null,
     }).eq('id', goal.id);
     if (error) { toast.error('Could not update progress'); return; }
     setGoals(prev => prev.map(g => g.id === goal.id
-      ? { ...g, progress: clamped, is_complete: shouldComplete }
+      ? { ...g, days_completed: newDays, progress: newProgress, is_complete: shouldComplete }
       : g
     ));
     if (shouldComplete) {
@@ -316,16 +319,30 @@ export default function PlanPage() {
     }
   };
 
+  const checkInGoalToday = async (goal: Goal) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await supabase.from('goal_checkins').insert({
+      goal_id: goal.id,
+      user_id: user!.id,
+      checked_date: today,
+    });
+    if (error?.code === '23505') { toast('Already checked in today'); return; }
+    if (error) { toast.error('Could not check in'); return; }
+    await adjustGoalDays(goal, 1);
+    toast.success('Day checked off! Keep going 🔥');
+  };
+
   const toggleGoal = async (goal: Goal) => {
     const isComplete = !goal.is_complete;
     const { error } = await supabase.from('goals').update({
       is_complete: isComplete,
+      days_completed: isComplete ? goal.period_days : goal.days_completed,
       progress: isComplete ? 100 : goal.progress,
       completed_at: isComplete ? new Date().toISOString() : null,
     }).eq('id', goal.id);
     if (error) { toast.error('Could not update goal'); return; }
     setGoals(prev => prev.map(g => g.id === goal.id
-      ? { ...g, is_complete: isComplete, progress: isComplete ? 100 : g.progress }
+      ? { ...g, is_complete: isComplete, days_completed: isComplete ? g.period_days : g.days_completed, progress: isComplete ? 100 : g.progress }
       : g
     ));
     if (isComplete) {
@@ -690,7 +707,7 @@ export default function PlanPage() {
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[11px] text-muted-foreground">Progress</span>
-                          <span className="text-[11px] font-semibold text-primary">{progress}%</span>
+                          <span className="text-[11px] font-semibold text-primary">{goal.days_completed || 0}/{goal.period_days} days</span>
                         </div>
                         <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
                           <div
@@ -702,21 +719,22 @@ export default function PlanPage() {
 
                       {/* Progress controls */}
                       {!goal.is_complete && (
-                        <div className="flex items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
+                        <div className="space-y-2 mb-3" onClick={e => e.stopPropagation()}>
                           <button
-                            onClick={e => { e.stopPropagation(); updateGoalProgress(goal, progress - 10); }}
-                            className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
-                          >−</button>
-                          <input
-                            type="range" min={0} max={100} step={5} value={progress}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => { e.stopPropagation(); updateGoalProgress(goal, parseInt(e.target.value)); }}
-                            className="flex-1 accent-primary h-1"
-                          />
-                          <button
-                            onClick={e => { e.stopPropagation(); updateGoalProgress(goal, progress + 10); }}
-                            className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
-                          >+</button>
+                            onClick={e => { e.stopPropagation(); checkInGoalToday(goal); }}
+                            className="w-full bg-primary/20 text-primary rounded-xl py-2 text-xs font-semibold hover:bg-primary/30 transition-colors"
+                          >✓ Mark today as done</button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={e => { e.stopPropagation(); adjustGoalDays(goal, -1); }}
+                              className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
+                            >−</button>
+                            <p className="flex-1 text-center text-xs text-muted-foreground">{goal.days_completed || 0} / {goal.period_days} days</p>
+                            <button
+                              onClick={e => { e.stopPropagation(); adjustGoalDays(goal, 1); }}
+                              className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-muted-foreground text-sm font-bold"
+                            >+</button>
+                          </div>
                         </div>
                       )}
 

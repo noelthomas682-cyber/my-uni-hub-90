@@ -157,6 +157,8 @@ export default function HomePage() {
   const [activities, setActivities] = useState<string[]>([]);
   const [lmsConnected, setLmsConnected] = useState<boolean | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
+  const [goalsForCheckin, setGoalsForCheckin] = useState<any[]>([]);
+  const [checkinDismissed, setCheckinDismissed] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [nightMode, setNightMode] = useState(false);
@@ -232,6 +234,16 @@ export default function HomePage() {
     trackEvent(user.id, 'app_open');
 
     // Non-critical fetches after render
+    // Load active goals for daily check-in prompt
+    const checkinKey = `rute_checkin_dismissed_${user.id}_${new Date().toISOString().split('T')[0]}`;
+    if (!sessionStorage.getItem(checkinKey)) {
+      supabase.from('goals').select('*')
+        .eq('user_id', user.id)
+        .eq('is_complete', false)
+        .limit(5)
+        .then(({ data }) => { if (data && data.length > 0) setGoalsForCheckin(data); });
+    }
+
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     supabase.from('tasks').select('*')
@@ -251,6 +263,36 @@ export default function HomePage() {
         });
         setTeams(merged);
       });
+  };
+
+  const handleGoalCheckin = async (goal: any) => {
+    const today = new Date().toISOString().split('T')[0];
+    const checkinKey = `rute_checkin_dismissed_${user?.id}_${today}`;
+    await supabase.from('goal_checkins').insert({
+      goal_id: goal.id, user_id: user!.id, checked_date: today,
+    }).then(async ({ error }) => {
+      if (error?.code === '23505') return;
+      const newDays = Math.min(goal.period_days, (goal.days_completed || 0) + 1);
+      const newProgress = Math.round((newDays / goal.period_days) * 100);
+      await supabase.from('goals').update({
+        days_completed: newDays, progress: newProgress,
+        is_complete: newDays >= goal.period_days,
+      }).eq('id', goal.id);
+    });
+    setGoalsForCheckin(prev => prev.filter(g => g.id !== goal.id));
+    toast.success(`Day checked off: ${goal.title} 🔥`);
+    if (goalsForCheckin.length <= 1) {
+      sessionStorage.setItem(checkinKey, '1');
+      setCheckinDismissed(true);
+    }
+  };
+
+  const dismissCheckin = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const checkinKey = `rute_checkin_dismissed_${user?.id}_${today}`;
+    sessionStorage.setItem(checkinKey, '1');
+    setCheckinDismissed(true);
+    setGoalsForCheckin([]);
   };
 
   const loadNotifications = async () => {
@@ -593,6 +635,32 @@ export default function HomePage() {
             <p className="font-bold text-sm text-white">Connect your university 📅</p>
             <p className="text-xs text-white/40 mt-1">Sync your timetable and deadlines from your LMS →</p>
           </button>
+        )}
+
+        {/* Daily Goal Check-in */}
+        {goalsForCheckin.length > 0 && !checkinDismissed && (
+          <div className="rounded-2xl p-4 border border-primary/20"
+            style={{ background: 'linear-gradient(135deg, hsl(140 30% 8%) 0%, hsl(160 25% 10%) 100%)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-bold text-sm text-white">Daily check-in</p>
+              <button onClick={dismissCheckin} className="text-white/30 text-xs">Skip</button>
+            </div>
+            <p className="text-xs text-white/50 mb-3">Did you work on your goals today?</p>
+            <div className="space-y-2">
+              {goalsForCheckin.map(goal => (
+                <div key={goal.id} className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{goal.title}</p>
+                    <p className="text-[10px] text-white/40">{goal.days_completed || 0}/{goal.period_days} days</p>
+                  </div>
+                  <button onClick={() => handleGoalCheckin(goal)}
+                    className="shrink-0 px-3 py-1.5 bg-primary/20 text-primary rounded-xl text-xs font-semibold hover:bg-primary/30 transition-colors">
+                    ✓ Done today
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Tasks & Deadlines */}
