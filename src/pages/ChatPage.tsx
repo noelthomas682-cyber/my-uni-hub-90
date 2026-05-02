@@ -1,14 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Send, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils'
-import { trackEvent } from '@/lib/trackEvent' // message_sent signal;
+import { cn } from '@/lib/utils';
 import { trackEvent } from '@/lib/trackEvent';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Conversation {
   id: string;
@@ -24,12 +21,10 @@ interface Message {
   created_at: string;
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
 export default function ChatPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
+  const { conversationId: paramConversationId } = useParams<{ conversationId?: string }>();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
@@ -48,13 +43,12 @@ export default function ChatPage() {
     loadContacts();
   }, [user]);
 
-  // Auto-open a specific conversation when navigated from TeamHub
+  // Auto-open conversation from URL param /chat/:conversationId
   useEffect(() => {
-    const state = location.state as { conversationId?: string } | null;
-    if (!state?.conversationId || conversations.length === 0) return;
-    const target = conversations.find(c => c.id === state.conversationId);
+    if (!paramConversationId || conversations.length === 0) return;
+    const target = conversations.find(c => c.id === paramConversationId);
     if (target) openConversation(target);
-  }, [location.state, conversations]);
+  }, [paramConversationId, conversations]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -155,19 +149,26 @@ export default function ChatPage() {
       sender_id: user!.id,
       content: newMessage.trim(),
     });
-    // Track message sent — social engagement signal for risk scoring
-    trackEvent(user!.id, 'message_sent');
-    await trackEvent(user!.id, 'message_sent', { conversation_id: activeConv.id });
+    trackEvent(user!.id, 'message_sent', { conversation_id: activeConv.id });
     setNewMessage('');
     setSending(false);
+  };
+
+  const handleBack = () => {
+    if (activeConv) {
+      setActiveConv(null);
+      // If we came from /chat/:id, go back to /chat list
+      if (paramConversationId) navigate('/chat');
+    } else {
+      navigate('/home');
+    }
   };
 
   return (
     <div className="flex flex-col h-screen bg-background">
 
       <div className="flex items-center gap-3 px-5 pt-12 pb-4 border-b border-border/40">
-        <button
-          onClick={() => activeConv ? setActiveConv(null) : navigate('/home')}
+        <button onClick={handleBack}
           className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -175,8 +176,7 @@ export default function ChatPage() {
           {activeConv ? (activeConv.name || 'Chat') : 'Messages'}
         </h1>
         {!activeConv && (
-          <button
-            onClick={() => setShowNewChat(!showNewChat)}
+          <button onClick={() => setShowNewChat(!showNewChat)}
             className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
             <Plus className="w-4 h-4 text-primary-foreground" />
           </button>
@@ -195,9 +195,7 @@ export default function ChatPage() {
                   No contacts yet — add classmates via QR code in Social
                 </p>
               ) : contacts.map(contact => (
-                <button
-                  key={contact.id}
-                  onClick={() => startNewChat(contact)}
+                <button key={contact.id} onClick={() => startNewChat(contact)}
                   className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors">
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                     <span className="text-primary font-bold text-sm">
@@ -217,16 +215,13 @@ export default function ChatPage() {
             <div className="text-center py-20">
               <p className="font-heading font-bold text-lg mb-2">No messages yet</p>
               <p className="text-muted-foreground text-sm mb-4">Start a conversation with a classmate</p>
-              <button
-                onClick={() => setShowNewChat(true)}
+              <button onClick={() => setShowNewChat(true)}
                 className="bg-primary text-primary-foreground px-6 py-2.5 rounded-full text-sm font-semibold">
                 New Message
               </button>
             </div>
           ) : conversations.map(conv => (
-            <button
-              key={conv.id}
-              onClick={() => openConversation(conv)}
+            <button key={conv.id} onClick={() => openConversation(conv)}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors mb-1">
               <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                 <span className="text-primary font-bold">
@@ -245,8 +240,7 @@ export default function ChatPage() {
         <>
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
             {messages.map(msg => (
-              <div
-                key={msg.id}
+              <div key={msg.id}
                 className={cn('flex', msg.sender_id === user!.id ? 'justify-end' : 'justify-start')}>
                 <div className={cn(
                   'max-w-[75%] px-4 py-2.5 rounded-2xl text-sm',
@@ -268,17 +262,12 @@ export default function ChatPage() {
           </div>
 
           <div className="px-5 py-4 border-t border-border/40 flex items-center gap-3">
-            <input
-              type="text"
-              value={newMessage}
+            <input type="text" value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendMessage()}
               placeholder="Type a message..."
-              className="flex-1 bg-secondary/60 rounded-full px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!newMessage.trim() || sending}
+              className="flex-1 bg-secondary/60 rounded-full px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <button onClick={sendMessage} disabled={!newMessage.trim() || sending}
               className="w-10 h-10 rounded-full bg-primary flex items-center justify-center shrink-0 disabled:opacity-50">
               <Send className="w-4 h-4 text-primary-foreground" />
             </button>

@@ -1,4 +1,3 @@
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -17,9 +16,9 @@ import Onboarding from "./pages/Onboarding";
 import LmsSettings from "./pages/LmsSettings";
 import ChatPage from "./pages/ChatPage";
 import TeamHubPage from "./pages/TeamHubPage";
- 
+
 const queryClient = new QueryClient();
- 
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -40,6 +39,7 @@ const App = () => (
               <Route path="/me" element={<MePage />} />
               <Route path="/lms-settings" element={<LmsSettings />} />
               <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:conversationId" element={<ChatPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
@@ -48,5 +48,5 @@ const App = () => (
     </TooltipProvider>
   </QueryClientProvider>
 );
- 
+
 export default App;
